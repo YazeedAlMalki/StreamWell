@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- YouTube embeds now REQUIRE a referrer; a stricter policy (or none) => Error 153 -->
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>StreamWell — Watch Multiple Live Streams in One Grid</title>
 <meta name="description" content="StreamWell is a multistream viewer. Paste YouTube, Twitch, Kick, Rumble or HLS/m3u8 links and watch them side by side in one grid. Share your grid with a link.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -130,15 +132,31 @@ footer .mono{color:var(--amber);font-size:11px;letter-spacing:.15em}
 .tile{
   position:relative;display:flex;flex-direction:column;min-height:180px;
   border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;
+  container-type:inline-size;
 }
 .tile .thead{
   display:flex;align-items:center;gap:8px;padding:5px 9px;background:var(--panel);
   border-bottom:1px solid var(--line);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-dim);
+  min-width:0;
 }
-.tile .thead .src{color:var(--amber);letter-spacing:.1em}
-.tile .thead .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.tile .thead .src{color:var(--amber);letter-spacing:.1em;flex-shrink:0}
+.tile .thead .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .tile .thead button{
   background:none;border:none;color:var(--ink-dim);font-size:13px;padding:2px 5px;border-radius:5px;line-height:1;
+  flex-shrink:0; /* controls must survive narrow tiles — text yields, buttons don't */
+}
+/* tiny tiles: shed decorations progressively, keep ⧉ ⟳ ⛶ ✕ always reachable */
+@container (max-width:340px){
+  .tile .thead .status{display:none}
+}
+@container (max-width:270px){
+  .tile .thead .src{display:none}
+  .tile .thead{gap:5px;padding:4px 7px}
+}
+@container (max-width:190px){
+  .tile .thead .name{display:none}
+  .tile .thead .tally{display:none}
+  .tile .thead{justify-content:flex-end}
 }
 .tile .thead button:hover{color:var(--ink);background:var(--panel-2)}
 .tile .player{flex:1;position:relative}
@@ -170,11 +188,13 @@ footer .mono{color:var(--amber);font-size:11px;letter-spacing:.15em}
 .offair .big{font-size:15px;letter-spacing:.2em;color:var(--ink-dim)}
 .offair .sub{font-size:11px;color:var(--ink-dim)}
 .offair .pulse{width:8px;height:8px;border-radius:50%;background:var(--amber);animation:tally 1.6s infinite}
+.offair .btn{margin-top:8px;font-size:12px;padding:6px 14px}
+.offair.err .big{color:var(--tally)}
 .status{font-size:9px;letter-spacing:.12em;padding:2px 6px;border-radius:4px;border:1px solid var(--line);flex-shrink:0}
 .status.live{color:var(--tally);border-color:var(--tally)}
 .status.off{color:var(--ink-dim)}
 
-/* directory + chooser modals */
+/* directory + chooser + mirror modals */
 .modal-veil{position:fixed;inset:0;background:rgba(8,10,14,.7);display:none;align-items:center;justify-content:center;z-index:100;padding:18px}
 .modal-veil.open{display:flex}
 .modal{
@@ -192,17 +212,10 @@ footer .mono{color:var(--amber);font-size:11px;letter-spacing:.15em}
 }
 .dir-row .dn{flex:1;font-size:14px;font-weight:600}
 .dir-row .dl{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-dim)}
-.dir-row .onwall{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--tally);letter-spacing:.1em}
+.dir-row .onwall{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--tally);letter-spacing:.1em;white-space:nowrap}
+/* dot drawn in CSS — the ● glyph rendered as a broken shape in some fonts */
+.dir-row .onwall::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--tally);box-shadow:0 0 6px var(--tally);margin:0 5px 0 6px;vertical-align:1px}
 .dir-row button{padding:5px 12px;font-size:12px}
-.dir-row .mirrors{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
-.dir-row .mir{
-  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;
-  padding:3px 9px;border-radius:999px;border:1px solid var(--line);
-  background:none;color:var(--ink-dim);cursor:pointer;white-space:nowrap;
-}
-.dir-row .mir:hover{border-color:var(--ink-dim)}
-.dir-row .mir.active{color:var(--amber);border-color:var(--amber);cursor:default}
-[dir=rtl] .dir-row .mir{letter-spacing:0;font-family:'IBM Plex Sans Arabic','IBM Plex Mono',monospace}
 .mhead .mh-actions{display:flex;align-items:center;gap:12px}
 .dir-check{width:16px;height:16px;accent-color:var(--amber);pointer-events:none;flex-shrink:0}
 .dir-row.selectable{cursor:pointer}
@@ -217,6 +230,11 @@ footer .mono{color:var(--amber);font-size:11px;letter-spacing:.15em}
 .chooser p{color:var(--ink-dim);font-size:14px;line-height:1.55;margin:14px 0}
 .chooser .copt{display:flex;flex-direction:column;gap:8px}
 .chooser .copt .btn{text-align:start}
+.mir-hint{color:var(--ink-dim);font-size:13px;line-height:1.55;margin:12px 0}
+.mir-link{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-dim);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;word-break:break-all;direction:ltr;unicode-bidi:isolate;text-align:start}
+.mir-addrow{display:flex;gap:8px;margin-top:12px}
+.mir-addrow input{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:9px 11px;font-size:13px;font-family:'IBM Plex Mono',monospace;min-width:0;unicode-bidi:plaintext}
+.mir-active{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--tally);border:1px solid var(--tally);border-radius:4px;padding:2px 6px;flex-shrink:0}
 
 /* directory live indicator */
 .live-ind{
@@ -225,7 +243,7 @@ footer .mono{color:var(--amber);font-size:11px;letter-spacing:.15em}
   color:var(--ink-dim);flex-shrink:0;white-space:nowrap;
 }
 .live-ind.is-live{color:var(--tally);border-color:var(--tally)}
-.live-ind.is-live::before{content:'●';margin-inline-end:5px;animation:tally 1.6s infinite}
+.live-ind.is-live::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--tally);box-shadow:0 0 6px var(--tally);margin-inline-end:5px;animation:tally 1.6s infinite}
 .live-ind.is-off{opacity:.75}
 .live-ind.is-chk{border-style:dashed}
 #probe-pen{position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden}
@@ -235,9 +253,9 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
 [dir=rtl] .hero h1{font-variation-settings:normal;letter-spacing:0;font-size:clamp(32px,4.6vw,54px);line-height:1.18}
 [dir=rtl] .eyebrow,[dir=rtl] .dir-country,[dir=rtl] .step .n,[dir=rtl] footer .mono,
 [dir=rtl] .offair .big,[dir=rtl] .status,[dir=rtl] .live-ind,[dir=rtl] .dir-row .onwall,
-[dir=rtl] .tile .thead .src{letter-spacing:0}
+[dir=rtl] .mir-active,[dir=rtl] .tile .thead .src{letter-spacing:0}
 [dir=rtl] .offair,[dir=rtl] .dir-row .dl,[dir=rtl] .live-ind,[dir=rtl] .dir-country,
-[dir=rtl] .eyebrow{font-family:'IBM Plex Sans Arabic','IBM Plex Mono',monospace}
+[dir=rtl] .mir-active,[dir=rtl] .eyebrow{font-family:'IBM Plex Sans Arabic','IBM Plex Mono',monospace}
 [dir=rtl] .brand{letter-spacing:0}
 
 @media (max-width:820px){
@@ -273,7 +291,7 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
         <a class="btn" href="#how" data-i18n="ctaHow" style="text-decoration:none;display:inline-flex;align-items:center">How it works</a>
       </div>
       <div class="platforms">
-        <span>YOUTUBE</span><span>TWITCH</span><span>KICK</span><span>RUMBLE</span><span>HLS / M3U8</span>
+        <span>YOUTUBE</span><span>TWITCH</span><span>KICK</span><span>RUMBLE</span><span>DAILYMOTION</span><span>VIMEO</span><span>HLS / M3U8</span><span data-i18n="platAnySite">ANY WEBSITE</span>
       </div>
     </div>
     <div class="wall" aria-hidden="true">
@@ -290,9 +308,9 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
     <div class="eyebrow" data-i18n="eyebrowHow">How it works</div>
     <h2 style="font-size:28px;font-weight:800" data-i18n="howH2">Three steps to your own control room</h2>
     <div class="steps">
-      <div class="step"><div class="n" data-i18n="stepN1">STEP 01</div><h3 data-i18n="step1h">Paste a link</h3><p data-i18n="step1p">Drop in any YouTube, Twitch, Kick, Rumble or direct m3u8 stream URL. The platform is detected automatically.</p></div>
-      <div class="step"><div class="n" data-i18n="stepN2">STEP 02</div><h3 data-i18n="step2h">Shape the grid</h3><p data-i18n="step2p">Add up to 12 streams. The layout adapts on its own, or pick a fixed layout and a focus view with one main screen.</p></div>
-      <div class="step"><div class="n" data-i18n="stepN3">STEP 03</div><h3 data-i18n="step3h">Share the wall</h3><p data-i18n="step3p">Copy a single link that rebuilds your exact grid for anyone who opens it. Send it anywhere.</p></div>
+      <div class="step"><div class="n" data-i18n="stepN1">STEP 01</div><h3 data-i18n="step1h">Paste a link</h3><p data-i18n="step1p">Drop in any YouTube, Twitch, Kick, Rumble, Dailymotion, Vimeo or direct m3u8 stream URL — or any website. The platform is detected automatically.</p></div>
+      <div class="step"><div class="n" data-i18n="stepN2">STEP 02</div><h3 data-i18n="step2h">Shape the grid</h3><p data-i18n="step2p">Add up to 24 streams. The layout adapts on its own, or pick a fixed layout and a focus view with one main screen.</p></div>
+      <div class="step"><div class="n" data-i18n="stepN3">STEP 03</div><h3 data-i18n="step3h">Share the wall</h3><p data-i18n="step3p">Copy a single link that rebuilds your exact grid — names included — for anyone who opens it.</p></div>
     </div>
   </section>
 
@@ -300,31 +318,32 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
     <div class="eyebrow" data-i18n="eyebrowBrowse">Browse curated grids</div>
     <h2 style="font-size:28px;font-weight:800" data-i18n="browseH2">Start with a preset for your vibe</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:20px">
-      <button class="preset-btn" onclick="loadPreset('esports')">
-        <div style="font-weight:800;font-size:16px" data-i18n="pEsportsT">Esports Multiview</div>
-        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pEsportsD">LoL, CS2, Valorant — watch tournament streams and POVs</div>
-      </button>
-      <button class="preset-btn" onclick="loadPreset('sports')">
-        <div style="font-weight:800;font-size:16px" data-i18n="pSportsT">Sports & Football</div>
-        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pSportsD">Premier League, La Liga, Champions League — all matches at once</div>
-      </button>
       <button class="preset-btn" onclick="loadPreset('news')">
         <div style="font-weight:800;font-size:16px" data-i18n="pNewsT">News Monitoring</div>
-        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pNewsD">BBC, CNN, Al Jazeera, Reuters — track a story from every angle</div>
+        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pNewsD">Al Jazeera, Sky News, DW, France 24 — real 24/7 channels, live now</div>
+      </button>
+      <button class="preset-btn" onclick="loadPreset('business')">
+        <div style="font-weight:800;font-size:16px" data-i18n="pBusinessT">Markets &amp; Business</div>
+        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pBusinessD">Bloomberg, CNBC, Yahoo Finance — real 24/7 business channels</div>
+      </button>
+      <button class="preset-btn" onclick="loadPreset('esports')">
+        <div style="font-weight:800;font-size:16px" data-i18n="pEsportsT">Esports Multiview</div>
+        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pEsportsD">Riot Games, ESL and VALORANT Twitch channels — live during events</div>
       </button>
       <button class="preset-btn" onclick="loadPreset('creators')">
         <div style="font-weight:800;font-size:16px" data-i18n="pCreatorsT">Creator Streams</div>
-        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pCreatorsD">Follow multiple streamers across Twitch, YouTube and Kick</div>
+        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pCreatorsD">Real Twitch channels — Auronplay, Ibai, Pokimane</div>
       </button>
-      <button class="preset-btn" onclick="loadPreset('f1')">
-        <div style="font-weight:800;font-size:16px" data-i18n="pF1T">F1 Race Day</div>
-        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pF1D">Main broadcast, pit camera, weather feed, radio channels</div>
+      <button class="preset-btn" onclick="loadPreset('sports')">
+        <div style="font-weight:800;font-size:16px" data-i18n="pSportsT">Match Day layout</div>
+        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pSportsD">A 4-tile match-day frame with placeholder feeds — swap in your own links</div>
       </button>
-      <button class="preset-btn" onclick="loadPreset('nba')">
-        <div style="font-weight:800;font-size:16px" data-i18n="pNbaT">NBA Multiview</div>
-        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pNbaD">Multiple games, player tracking, broadcast feeds</div>
+      <button class="preset-btn" onclick="loadPreset('space')">
+        <div style="font-weight:800;font-size:16px" data-i18n="pSpaceT">Space &amp; Weather</div>
+        <div style="color:var(--ink-dim);font-size:13px;margin-top:6px" data-i18n="pSpaceD">NASA, FOX Weather and WeatherNation — real live channels</div>
       </button>
     </div>
+    <p class="mir-hint" data-i18n="presetNote">Presets are starting points. Every tile can be renamed, swapped for a mirror, or replaced with your own link.</p>
   </section>
 
   <section>
@@ -341,11 +360,12 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
   <section class="faq">
     <div class="eyebrow" data-i18n="eyebrowFaq">FAQ</div>
     <h2 style="font-size:28px;font-weight:800" data-i18n="faqH2">Questions, answered</h2>
-    <details><summary data-i18n="faq1q">Which platforms are supported?</summary><p data-i18n="faq1a">YouTube, Twitch, Kick and Rumble links are detected automatically, plus any direct HLS/m3u8 stream — useful for live TV channels. Just paste the URL.</p></details>
-    <details><summary data-i18n="faq2q">How many streams can I add?</summary><p data-i18n="faq2a">Up to 12 streams in a single grid. The layout scales from a single full-screen player up to a 4×3 wall.</p></details>
-    <details><summary data-i18n="faq3q">Can I share my grid?</summary><p data-i18n="faq3a">Yes. The Share button copies a link that encodes your exact set of streams. Anyone who opens it sees the same wall.</p></details>
-    <details><summary data-i18n="faq4q">Does it work on mobile?</summary><p data-i18n="faq4a">Yes — on narrow screens the grid stacks vertically so every stream stays watchable.</p></details>
-    <details><summary data-i18n="faq5q">Why won't a Twitch stream load?</summary><p data-i18n="faq5a">Twitch embeds only play on real hosted domains (the player checks a <code>parent</code> parameter). Host this file on any domain — even a free static host — and Twitch tiles will work.</p></details>
+    <details><summary data-i18n="faq1q">Which platforms are supported?</summary><p data-i18n="faq1a">YouTube, Twitch, Kick, Rumble, Dailymotion and Vimeo links are detected automatically, plus any direct HLS/m3u8 stream — useful for live TV channels. Any other website URL is embedded as-is. Just paste the URL.</p></details>
+    <details><summary data-i18n="faq2q">How many streams can I add?</summary><p data-i18n="faq2a">Up to 24 streams in a single grid. The layout scales from a single full-screen player up to a 6×4 wall.</p></details>
+    <details><summary data-i18n="faq3q">Can I share my grid?</summary><p data-i18n="faq3a">Yes. The Share button copies a link that encodes your exact set of streams and the names you gave them. Anyone who opens it sees the same wall.</p></details>
+    <details><summary data-i18n="faq4q">What are mirrors?</summary><p data-i18n="faq4a">A mirror is a second source for the same channel — a YouTube feed and the broadcaster's own m3u8, for example. Open a tile's ⧉ button to add mirrors and switch between them without disturbing any other tile.</p></details>
+    <details><summary data-i18n="faq5q">Does it work on mobile?</summary><p data-i18n="faq5a">Yes — on narrow screens the grid stacks vertically so every stream stays watchable.</p></details>
+    <details><summary data-i18n="faq6q">Why won't a Twitch stream load?</summary><p data-i18n="faq6a">Twitch embeds only play on real hosted domains (the player checks a <code>parent</code> parameter). Host this file on any domain — even a free static host — and Twitch tiles will work. YouTube likewise refuses embeds opened straight from disk (Error 153), so serve the page over http(s).</p></details>
   </section>
 
   <footer>
@@ -358,7 +378,7 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
 <div id="app">
   <div class="appbar">
     <a class="brand" href="#" onclick="showLanding();return false" style="font-size:15px"><span class="dot"></span>StreamWell</a>
-    <input id="urlInput" type="text" placeholder="Paste a YouTube / Twitch / Kick / Rumble / m3u8 URL and press Enter" data-i18n-ph="phUrl" data-i18n-aria="ariaUrl" aria-label="Stream URL">
+    <input id="urlInput" type="text" placeholder="Paste a YouTube / Twitch / Kick / Rumble / m3u8 link — or any website URL — and press Enter" data-i18n-ph="phUrl" data-i18n-aria="ariaUrl" aria-label="Stream URL">
     <button class="btn primary" data-i18n="addStream" onclick="addFromInput()">Add stream</button>
     <select id="layoutSel" onchange="applyLayout()" data-i18n-aria="ariaLayout" aria-label="Layout">
       <option value="auto" data-i18n="layoutAuto">Layout: Auto</option>
@@ -366,13 +386,15 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
       <option value="2" data-i18n="layout2">2 columns</option>
       <option value="3" data-i18n="layout3">3 columns</option>
       <option value="4" data-i18n="layout4">4 columns</option>
+      <option value="5" data-i18n="layout5">5 columns</option>
+      <option value="6" data-i18n="layout6">6 columns</option>
       <option value="focus" data-i18n="layoutFocus">Focus (1 big)</option>
     </select>
     <button class="btn" data-i18n="navDirectory" onclick="openDirectory()">Directory</button>
     <button class="btn" data-i18n="navShare" onclick="shareGrid()">Share</button>
     <button class="btn" data-i18n="navClear" onclick="clearGrid()">Clear</button>
     <button class="btn lang-btn" onclick="toggleLang()" aria-label="Switch language">عربي</button>
-    <span class="count" id="count">0 / 12</span>
+    <span class="count" id="count">0 / 24</span>
   </div>
   <div id="grid">
     <div id="empty">
@@ -401,6 +423,32 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
   </div>
 </div>
 
+<!-- Mirror manager / stream details modal -->
+<div class="modal-veil" id="mirVeil" role="dialog" aria-modal="true" aria-labelledby="mirTitle">
+  <div class="modal">
+    <div class="mhead">
+      <h3 id="mirTitle">Stream details</h3>
+      <button onclick="closeMirrors()" data-i18n-aria="ariaCloseMir" aria-label="Close details">✕</button>
+    </div>
+    <div class="mbody">
+      <div class="dir-country" data-i18n="mirNameHead">Channel name</div>
+      <div class="mir-addrow" style="margin-top:0">
+        <input id="mirName" type="text" placeholder="Type a name, e.g. Al Jazeera English" data-i18n-ph="mirNamePh" data-i18n-aria="mirNameAria" aria-label="Channel name">
+        <button class="btn" data-i18n="mirSaveName" onclick="saveMirrorName()">Save name</button>
+      </div>
+      <div class="dir-country" data-i18n="mirLinkHead">Source link</div>
+      <div id="mirLink" class="mir-link"></div>
+      <div class="dir-country" data-i18n="mirListHead">Mirrors — backup sources</div>
+      <p class="mir-hint" style="margin-top:4px" data-i18n="mirHint">Same channel from several sources. One plays at a time — Switch changes this tile only. Paste YouTube, Twitch, Kick, Rumble embed or .m3u8 links.</p>
+      <div id="mirList"></div>
+      <div class="mir-addrow">
+        <input id="mirInput" type="text" placeholder="Paste an alternate link for this channel" data-i18n-ph="mirAddPh" data-i18n-aria="mirAddAria" aria-label="Alternate link">
+        <button class="btn" data-i18n="mirAdd" onclick="addMirror()">Add mirror</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Duplicate chooser modal -->
 <div class="modal-veil" id="chVeil" role="dialog" aria-modal="true" aria-labelledby="chTitle">
   <div class="modal chooser">
@@ -419,8 +467,28 @@ html[dir=rtl] body{font-family:'IBM Plex Sans Arabic','Archivo',system-ui,sans-s
 <div id="probe-pen" aria-hidden="true"></div>
 
 <script>
-const MAX_STREAMS = 12;
-let streams = []; // {type, id, label}
+/* ============================================================================
+   StreamWell — single-file multistream viewer.
+
+   v1.1 (2026-07-29) — the true merge of the two lineages that had diverged:
+     • from the July-12 / GitHub build: EN + AR i18n with RTL, the 46-channel
+       directory with Arabic names, directory live-status probing, multi-select
+       bulk add.
+     • from the hardened local build: uid-based tile isolation, surgical
+       add/remove/reload, ID_OK share-link validation, quote-safe escapeHtml,
+       HLS retry ladder, per-tile mirror manager, website/Dailymotion/Vimeo
+       embeds, referrer handling for YouTube Error 153.
+   Neither predecessor had both halves. This file does.
+   ========================================================================= */
+
+const MAX_STREAMS = 24;
+let streams = [];          // {uid, type, id, label, mirrors?}
+let uidSeq = 1;            // stable per-tile identity (indexes shift on removal)
+let hlsPlayers = {};       // uid -> Hls instance (destroyed on tile teardown)
+
+function withUid(s){ if(!s.uid) s.uid = uidSeq++; return s; }
+function streamByUid(uid){ return streams.find(s=>s.uid===uid); }
+function tileEl(uid){ return document.querySelector('#grid .tile[data-uid="'+uid+'"]'); }
 
 /* ---------- i18n ---------- */
 let LANG = 'en';
@@ -435,65 +503,89 @@ en:{
   heroH1:'Every stream.<br>One <em>wall</em>.',
   heroLede:'Paste links from Twitch, YouTube, Kick, Rumble or any HLS/m3u8 source and watch them side by side. Built for esports finals, match days, breaking news and creator marathons.',
   ctaCreate:'Create your grid', ctaHow:'How it works',
+  platAnySite:'ANY WEBSITE',
   eyebrowHow:'How it works', howH2:'Three steps to your own control room',
   stepN1:'STEP 01', stepN2:'STEP 02', stepN3:'STEP 03',
-  step1h:'Paste a link', step1p:'Drop in any YouTube, Twitch, Kick, Rumble or direct m3u8 stream URL. The platform is detected automatically.',
-  step2h:'Shape the grid', step2p:'Add up to 12 streams. The layout adapts on its own, or pick a fixed layout and a focus view with one main screen.',
-  step3h:'Share the wall', step3p:'Copy a single link that rebuilds your exact grid for anyone who opens it. Send it anywhere.',
+  step1h:'Paste a link', step1p:'Drop in any YouTube, Twitch, Kick, Rumble, Dailymotion, Vimeo or direct m3u8 stream URL — or any website. The platform is detected automatically.',
+  step2h:'Shape the grid', step2p:'Add up to 24 streams. The layout adapts on its own, or pick a fixed layout and a focus view with one main screen.',
+  step3h:'Share the wall', step3p:'Copy a single link that rebuilds your exact grid — names included — for anyone who opens it.',
   eyebrowBrowse:'Browse curated grids', browseH2:'Start with a preset for your vibe',
-  pEsportsT:'Esports Multiview', pEsportsD:'LoL, CS2, Valorant — watch tournament streams and POVs',
-  pSportsT:'Sports & Football', pSportsD:'Premier League, La Liga, Champions League — all matches at once',
-  pNewsT:'News Monitoring', pNewsD:'BBC, CNN, Al Jazeera, Reuters — track a story from every angle',
-  pCreatorsT:'Creator Streams', pCreatorsD:'Follow multiple streamers across Twitch, YouTube and Kick',
-  pF1T:'F1 Race Day', pF1D:'Main broadcast, pit camera, weather feed, radio channels',
-  pNbaT:'NBA Multiview', pNbaD:'Multiple games, player tracking, broadcast feeds',
+  pNewsT:'News Monitoring', pNewsD:'Al Jazeera, Sky News, DW, France 24 — real 24/7 channels, live now',
+  pBusinessT:'Markets & Business', pBusinessD:'Bloomberg, CNBC, Yahoo Finance — real 24/7 business channels',
+  pEsportsT:'Esports Multiview', pEsportsD:'Riot Games, ESL and VALORANT Twitch channels — live during events',
+  pCreatorsT:'Creator Streams', pCreatorsD:'Real Twitch channels — Auronplay, Ibai, Pokimane',
+  pSportsT:'Match Day layout', pSportsD:'A 4-tile match-day frame with placeholder feeds — swap in your own links',
+  pSpaceT:'Space & Weather', pSpaceD:'NASA, FOX Weather and WeatherNation — real live channels',
+  presetNote:'Presets are starting points. Every tile can be renamed, swapped for a mirror, or replaced with your own link.',
   eyebrowCases:'Use cases', casesH2:'Made for watching everything at once',
   case1h:'Esports tournaments', case1p:'Follow multiple player POVs and the main broadcast at the same time. Never miss the play of the game.',
   case2h:'Match days', case2p:'Several games kicking off at once? Put every match on the wall and catch every goal live.',
   case3h:'News monitoring', case3p:'Line up international news channels side by side and follow a developing story from every angle.',
   case4h:'Creator marathons', case4p:'Your favorite streamers across Twitch, YouTube and Kick — all in one window instead of six tabs.',
   eyebrowFaq:'FAQ', faqH2:'Questions, answered',
-  faq1q:'Which platforms are supported?', faq1a:'YouTube, Twitch, Kick and Rumble links are detected automatically, plus any direct HLS/m3u8 stream — useful for live TV channels. Just paste the URL.',
-  faq2q:'How many streams can I add?', faq2a:'Up to 12 streams in a single grid. The layout scales from a single full-screen player up to a 4×3 wall.',
-  faq3q:'Can I share my grid?', faq3a:'Yes. The Share button copies a link that encodes your exact set of streams. Anyone who opens it sees the same wall.',
-  faq4q:'Does it work on mobile?', faq4a:'Yes — on narrow screens the grid stacks vertically so every stream stays watchable.',
-  faq5q:'Why won’t a Twitch stream load?', faq5a:'Twitch embeds only play on real hosted domains (the player checks a <code>parent</code> parameter). Host this file on any domain — even a free static host — and Twitch tiles will work.',
+  faq1q:'Which platforms are supported?', faq1a:'YouTube, Twitch, Kick, Rumble, Dailymotion and Vimeo links are detected automatically, plus any direct HLS/m3u8 stream — useful for live TV channels. Any other website URL is embedded as-is. Just paste the URL.',
+  faq2q:'How many streams can I add?', faq2a:'Up to 24 streams in a single grid. The layout scales from a single full-screen player up to a 6×4 wall.',
+  faq3q:'Can I share my grid?', faq3a:'Yes. The Share button copies a link that encodes your exact set of streams and the names you gave them. Anyone who opens it sees the same wall.',
+  faq4q:'What are mirrors?', faq4a:'A mirror is a second source for the same channel — a YouTube feed and the broadcaster’s own m3u8, for example. Open a tile’s ⧉ button to add mirrors and switch between them without disturbing any other tile.',
+  faq5q:'Does it work on mobile?', faq5a:'Yes — on narrow screens the grid stacks vertically so every stream stays watchable.',
+  faq6q:'Why won’t a Twitch stream load?', faq6a:'Twitch embeds only play on real hosted domains (the player checks a <code>parent</code> parameter). Host this file on any domain — even a free static host — and Twitch tiles will work. YouTube likewise refuses embeds opened straight from disk (Error 153), so serve the page over http(s).',
   footerTag:'ALL STREAMS. ONE SCREEN.',
-  phUrl:'Paste a YouTube / Twitch / Kick / Rumble / m3u8 URL and press Enter', ariaUrl:'Stream URL',
+  phUrl:'Paste a YouTube / Twitch / Kick / Rumble / m3u8 link — or any website URL — and press Enter', ariaUrl:'Stream URL',
   addStream:'Add stream',
-  layoutAuto:'Layout: Auto', layout2:'2 columns', layout3:'3 columns', layout4:'4 columns', layoutFocus:'Focus (1 big)', ariaLayout:'Layout',
+  layoutAuto:'Layout: Auto', layout2:'2 columns', layout3:'3 columns', layout4:'4 columns', layout5:'5 columns', layout6:'6 columns', layoutFocus:'Focus (1 big)', ariaLayout:'Layout',
   navDirectory:'Directory', navShare:'Share', navClear:'Clear',
   emptyBig:'Your wall is empty', emptyHint:'Paste a stream link above, or open the Directory to pick a news channel.', emptyTry:'Try:',
-  dirTitle:'Channel directory', dirCount:'— {n} channels, {c} countries', dirAdd:'Add', dirOnWall:'● ON WALL',
+  dirTitle:'Channel directory', dirCount:'— {n} channels, {c} countries', dirAdd:'Add', dirOnWall:'ON WALL',
   dirSelect:'Select', dirCancel:'Cancel', ariaSelect:'Select multiple channels', ariaCancelSelect:'Cancel selection',
   dirAddSel:'Add {n} selected', dirAddSelEmpty:'Select channels', dirSlotsLeft:'Slots left: {r}',
+  onWallHead:'On your wall — {n}', removeBtn:'Remove',
   toastBulkAdded:'Added {n} to the wall.', toastBulkSkipped:'{k} skipped (already on the wall).',
   toastSelMax:'That’s the limit — room for {r} more on the wall (max {max} streams).',
   badgeLive:'LIVE', badgeOff:'OFF AIR', badgeChecking:'···', badgeUnknown:'—',
   chTitle:'Already on your wall',
   dupUrlMsg:'"{label}" is already on your wall with the same stream. What do you want to do?',
   keepTile:'Keep the existing tile', addSecond:'Add it as a second tile anyway',
+  manageMirrors:'Manage that tile’s mirrors instead',
   dupChanMsg:'"{a}" is already on your wall and uses the same YouTube channel as "{b}".{shared} What do you want to do?',
   sharedNote:' Note: {names} share one YouTube channel — the live embed carries the same feed.',
-  replaceWith:'Replace it with "{name}"',
-  mirLabel:'Mirror {n}', mirYt:'YouTube', mirWeb:'Website',
-  mirActive:'Active', mirSwitch:'Switch',
+  replaceWith:'Rename it to "{name}"',
   dupMirMsg:'"{a}" is already on your wall from another source. Switch that tile to {to}, or add a second tile?',
   mirSwitchTo:'Switch the tile to {to}',
-  toastMirror:'{label} switched to {src}.',
+  mirSourceYt:'the YouTube feed', mirSourceWeb:'the website feed',
+  webSuffix:'{name} (website feed)',
   toastHandle:'Handle links (@name) can’t be pinned. Use the channel ID link: youtube.com/channel/UC…',
-  toastRumble:'For Rumble, use the embed link (rumble.com/embed/…) from the video’s Share menu.',
-  toastUnrecognized:'Couldn’t recognize that link. Supported: YouTube, Twitch, Kick, Rumble embed, .m3u8',
+  toastRumblePage:'Added the Rumble page as a website embed. If it stays blank, use the embed link (rumble.com/embed/…) from the video’s Share menu.',
+  toastWebEmbed:'Added as a website embed. If the tile stays blank, that site refuses to be embedded — try its YouTube or m3u8 link as a mirror.',
+  toastUnrecognized:'Couldn’t recognize that link. Supported: YouTube, Twitch, Kick, Rumble embed, Dailymotion, Vimeo, .m3u8, or any website URL',
   toastFull:'Grid is full — max {max} streams.',
   toastAddFirst:'Add a stream first.',
   toastCopied:'Grid link copied — send it to anyone.', promptCopy:'Copy your grid link:',
-  toastNoHls:'This browser can’t play HLS streams.',
-  toastAdded:'{label} added — it will auto-follow the channel’s live streams.',
-  toastPreset:'Loaded {name} preset — customize by editing stream links',
+  toastAdded:'{label} added.',
+  toastAddedChan:'{label} added — it will auto-follow the channel’s live streams.',
+  toastPreset:'Loaded {name} — rename or replace any tile to make it yours',
+  toastRenamed:'Renamed to {name}',
+  toastMirAdded:'Mirror added — press Switch to play it.',
+  toastMirDup:'That link is already a mirror of this tile.',
+  toastMirActiveDel:'Switch to another mirror first — the active one can’t be deleted.',
+  toastMirSwitched:'Switched to mirror {n} — {label}',
   offairBig:'OFF AIR', offairSub:'Watching for the next live stream on this channel…',
-  statusLive:'LIVE', statusOff:'OFF AIR',
+  statusLive:'LIVE', statusOff:'OFF AIR', statusChecking:'CHECKING', statusUnknown:'—',
+  errBig:'STREAM ERROR', errRetryBtn:'Retry',
+  errNoHls:'This browser can’t play HLS streams.',
+  errLoad:'Stream failed to load — source may be offline.',
+  errRetrying:'Stream not loading — retrying ({n}/3)…',
+  errUnreachable:'Stream unreachable — source offline or blocks browser playback (CORS).',
+  titleMirrors:'Mirrors & name', ariaMirrors:'Stream details and mirrors',
   titleReload:'Reload', ariaReload:'Reload stream', titleFs:'Fullscreen', ariaFs:'Fullscreen', titleRemove:'Remove', ariaRemove:'Remove stream',
-  ariaCloseDir:'Close directory', ariaClose:'Close',
+  ariaCloseDir:'Close directory', ariaClose:'Close', ariaCloseMir:'Close details',
+  mirDetails:'Stream details', mirDetailsNamed:'Stream details — {name}',
+  mirNameHead:'Channel name', mirNamePh:'Type a name, e.g. Al Jazeera English', mirNameAria:'Channel name', mirSaveName:'Save name',
+  mirLinkHead:'Source link', mirListHead:'Mirrors — backup sources',
+  mirHint:'Same channel from several sources. One plays at a time — Switch changes this tile only. Paste YouTube, Twitch, Kick, Rumble embed or .m3u8 links.',
+  mirAddPh:'Paste an alternate link for this channel', mirAddAria:'Alternate link', mirAdd:'Add mirror',
+  mirRowLabel:'Mirror {n} — {label}', mirActiveBadge:'ACTIVE', mirSwitchBtn:'Switch', mirDelete:'Delete this mirror', ariaMirDelete:'Delete mirror',
+  demoSlot:'Placeholder feed — replace with your own link',
+  fileBanner:'YouTube blocks embeds opened from a local file (Error 153). Serve this page over http(s) — e.g. <b>python3 -m http.server</b> in this folder, then open <b>http://localhost:8000</b> — or host it (GitHub Pages works).',
 },
 ar:{
   docTitle:'StreamWell — شاهد أكثر من بث مباشر في شبكة واحدة',
@@ -504,65 +596,89 @@ ar:{
   heroH1:'كل البث.<br>جدار <em>واحد</em>.',
   heroLede:'الصق روابط من تويتش أو يوتيوب أو كيك أو رامبل أو أي مصدر HLS/m3u8 وشاهدها جنبًا إلى جنب. صُمّم لنهائيات الرياضات الإلكترونية وأيام المباريات والأخبار العاجلة وماراثونات صنّاع المحتوى.',
   ctaCreate:'أنشئ شبكتك', ctaHow:'كيف يعمل؟',
+  platAnySite:'أي موقع',
   eyebrowHow:'كيف يعمل', howH2:'ثلاث خطوات إلى غرفة تحكم خاصة بك',
   stepN1:'الخطوة 01', stepN2:'الخطوة 02', stepN3:'الخطوة 03',
-  step1h:'الصق رابطًا', step1p:'أدخل أي رابط بث من يوتيوب أو تويتش أو كيك أو رامبل أو رابط m3u8 مباشر، وسيتم التعرف على المنصة تلقائيًا.',
-  step2h:'شكّل الشبكة', step2p:'أضف حتى 12 بثًا. يتكيّف التخطيط من تلقاء نفسه، أو اختر تخطيطًا ثابتًا أو عرض التركيز بشاشة رئيسية واحدة.',
-  step3h:'شارك الجدار', step3p:'انسخ رابطًا واحدًا يعيد بناء شبكتك بالضبط لكل من يفتحه. أرسله إلى أي مكان.',
+  step1h:'الصق رابطًا', step1p:'أدخل أي رابط بث من يوتيوب أو تويتش أو كيك أو رامبل أو ديلي موشن أو فيميو أو رابط m3u8 مباشر — أو أي موقع، وسيتم التعرف على المنصة تلقائيًا.',
+  step2h:'شكّل الشبكة', step2p:'أضف حتى 24 بثًا. يتكيّف التخطيط من تلقاء نفسه، أو اختر تخطيطًا ثابتًا أو عرض التركيز بشاشة رئيسية واحدة.',
+  step3h:'شارك الجدار', step3p:'انسخ رابطًا واحدًا يعيد بناء شبكتك بالضبط — بأسمائها — لكل من يفتحه.',
   eyebrowBrowse:'شبكات جاهزة', browseH2:'ابدأ بشبكة جاهزة تناسبك',
-  pEsportsT:'الرياضات الإلكترونية', pEsportsD:'LoL وCS2 وValorant — تابع بث البطولات ومنظور اللاعبين',
-  pSportsT:'الرياضة وكرة القدم', pSportsD:'الدوري الإنجليزي والدوري الإسباني ودوري الأبطال — كل المباريات دفعة واحدة',
-  pNewsT:'متابعة الأخبار', pNewsD:'بي بي سي وسي إن إن والجزيرة ورويترز — تابع الخبر من كل زاوية',
-  pCreatorsT:'بث صنّاع المحتوى', pCreatorsD:'تابع عدة صنّاع محتوى عبر تويتش ويوتيوب وكيك',
-  pF1T:'يوم سباق فورمولا 1', pF1D:'البث الرئيسي وكاميرا الحلبة وحالة الطقس وقنوات الراديو',
-  pNbaT:'عرض NBA المتعدد', pNbaD:'عدة مباريات وتتبع اللاعبين وقنوات البث',
+  pNewsT:'متابعة الأخبار', pNewsD:'الجزيرة وسكاي نيوز ودويتشه فيله وفرانس 24 — قنوات حقيقية تبث 24/7',
+  pBusinessT:'الأسواق والأعمال', pBusinessD:'بلومبرغ وسي إن بي سي وياهو فاينانس — قنوات أعمال حقيقية تبث 24/7',
+  pEsportsT:'الرياضات الإلكترونية', pEsportsD:'قنوات Riot Games وESL وVALORANT على تويتش — مباشرة أثناء البطولات',
+  pCreatorsT:'بث صنّاع المحتوى', pCreatorsD:'قنوات تويتش حقيقية — Auronplay وIbai وPokimane',
+  pSportsT:'تخطيط يوم المباراة', pSportsD:'إطار من أربع بلاطات ببثوث بديلة — استبدلها بروابطك',
+  pSpaceT:'الفضاء والطقس', pSpaceD:'ناسا وفوكس ويذر وويذرنيشن — قنوات مباشرة حقيقية',
+  presetNote:'الشبكات الجاهزة نقطة بداية فقط. يمكن إعادة تسمية أي بلاطة أو تبديل مصدرها أو استبدالها برابطك.',
   eyebrowCases:'حالات الاستخدام', casesH2:'صُمّم لمشاهدة كل شيء في آنٍ واحد',
   case1h:'بطولات الرياضات الإلكترونية', case1p:'تابع منظور أكثر من لاعب مع البث الرئيسي في الوقت نفسه، ولن تفوتك اللقطة الحاسمة.',
   case2h:'أيام المباريات', case2p:'عدة مباريات تبدأ في وقت واحد؟ ضع كل مباراة على الجدار وشاهد كل هدف لحظة تسجيله.',
   case3h:'متابعة الأخبار', case3p:'اصطفّ القنوات الإخبارية العالمية جنبًا إلى جنب وتابع الحدث من كل زاوية.',
   case4h:'ماراثونات صنّاع المحتوى', case4p:'صنّاع المحتوى المفضلون لديك عبر تويتش ويوتيوب وكيك — في نافذة واحدة بدلًا من ست تبويبات.',
   eyebrowFaq:'الأسئلة الشائعة', faqH2:'إجابات عن أسئلتك',
-  faq1q:'ما المنصات المدعومة؟', faq1a:'يتم التعرف تلقائيًا على روابط يوتيوب وتويتش وكيك ورامبل، إضافةً إلى أي بث HLS/m3u8 مباشر — مفيد لقنوات التلفزيون المباشرة. الصق الرابط فقط.',
-  faq2q:'كم بثًا يمكنني إضافته؟', faq2a:'حتى 12 بثًا في شبكة واحدة. يتدرج التخطيط من مشغّل واحد بملء الشاشة إلى جدار 4×3.',
-  faq3q:'هل يمكنني مشاركة شبكتي؟', faq3a:'نعم. زر المشاركة ينسخ رابطًا يحفظ مجموعة بثوثك بالضبط، وكل من يفتحه يرى الجدار نفسه.',
-  faq4q:'هل يعمل على الهاتف؟', faq4a:'نعم — على الشاشات الضيقة تتراص الشبكة عموديًا لتبقى كل البثوث قابلة للمشاهدة.',
-  faq5q:'لماذا لا يعمل بث تويتش؟', faq5a:'لا تعمل مشغّلات تويتش المضمّنة إلا على نطاق مستضاف حقيقي (يتحقق المشغّل من مَعامل <code>parent</code>). استضف هذا الملف على أي نطاق — حتى استضافة ثابتة مجانية — وستعمل بلاطات تويتش.',
+  faq1q:'ما المنصات المدعومة؟', faq1a:'يتم التعرف تلقائيًا على روابط يوتيوب وتويتش وكيك ورامبل وديلي موشن وفيميو، إضافةً إلى أي بث HLS/m3u8 مباشر — مفيد لقنوات التلفزيون المباشرة. وأي رابط موقع آخر يُضمَّن كما هو. الصق الرابط فقط.',
+  faq2q:'كم بثًا يمكنني إضافته؟', faq2a:'حتى 24 بثًا في شبكة واحدة. يتدرج التخطيط من مشغّل واحد بملء الشاشة إلى جدار 6×4.',
+  faq3q:'هل يمكنني مشاركة شبكتي؟', faq3a:'نعم. زر المشاركة ينسخ رابطًا يحفظ مجموعة بثوثك بالضبط مع الأسماء التي منحتها لها، وكل من يفتحه يرى الجدار نفسه.',
+  faq4q:'ما المقصود بالمصادر البديلة؟', faq4a:'المصدر البديل هو مصدر ثانٍ للقناة نفسها — بث يوتيوب ورابط m3u8 الخاص بالمحطة مثلًا. افتح زر ⧉ في البلاطة لإضافة مصادر والتبديل بينها دون التأثير على أي بلاطة أخرى.',
+  faq5q:'هل يعمل على الهاتف؟', faq5a:'نعم — على الشاشات الضيقة تتراص الشبكة عموديًا لتبقى كل البثوث قابلة للمشاهدة.',
+  faq6q:'لماذا لا يعمل بث تويتش؟', faq6a:'لا تعمل مشغّلات تويتش المضمّنة إلا على نطاق مستضاف حقيقي (يتحقق المشغّل من مَعامل <code>parent</code>). استضف هذا الملف على أي نطاق — حتى استضافة ثابتة مجانية — وستعمل بلاطات تويتش. كذلك يرفض يوتيوب التضمين عند فتح الصفحة من القرص مباشرة (خطأ 153)، لذا قدّمها عبر http(s).',
   footerTag:'كل البث. شاشة واحدة.',
-  phUrl:'الصق رابط يوتيوب / تويتش / كيك / رامبل / m3u8 واضغط Enter', ariaUrl:'رابط البث',
+  phUrl:'الصق رابط يوتيوب / تويتش / كيك / رامبل / m3u8 — أو أي رابط موقع — واضغط Enter', ariaUrl:'رابط البث',
   addStream:'إضافة بث',
-  layoutAuto:'التخطيط: تلقائي', layout2:'عمودان', layout3:'3 أعمدة', layout4:'4 أعمدة', layoutFocus:'تركيز (شاشة كبيرة)', ariaLayout:'التخطيط',
+  layoutAuto:'التخطيط: تلقائي', layout2:'عمودان', layout3:'3 أعمدة', layout4:'4 أعمدة', layout5:'5 أعمدة', layout6:'6 أعمدة', layoutFocus:'تركيز (شاشة كبيرة)', ariaLayout:'التخطيط',
   navDirectory:'دليل القنوات', navShare:'مشاركة', navClear:'مسح',
   emptyBig:'جدارك فارغ', emptyHint:'الصق رابط بث في الأعلى، أو افتح دليل القنوات لاختيار قناة إخبارية.', emptyTry:'جرّب:',
-  dirTitle:'دليل القنوات', dirCount:'— {n} قناة، {c} دولة', dirAdd:'إضافة', dirOnWall:'● على الجدار',
+  dirTitle:'دليل القنوات', dirCount:'— {n} قناة، {c} دولة', dirAdd:'إضافة', dirOnWall:'على الجدار',
   dirSelect:'تحديد', dirCancel:'إلغاء', ariaSelect:'تحديد عدة قنوات', ariaCancelSelect:'إلغاء التحديد',
   dirAddSel:'إضافة المحدد ({n})', dirAddSelEmpty:'حدد قنوات', dirSlotsLeft:'الخانات المتبقية: {r}',
+  onWallHead:'على جدارك — {n}', removeBtn:'إزالة',
   toastBulkAdded:'تمت إضافة {n} إلى الجدار.', toastBulkSkipped:'تم تخطي {k} (موجودة على الجدار).',
   toastSelMax:'بلغت الحد — المتبقي على الجدار {r} (الحد الأقصى {max} بثًا).',
   badgeLive:'مباشر', badgeOff:'خارج البث', badgeChecking:'···', badgeUnknown:'—',
   chTitle:'موجود على جدارك',
   dupUrlMsg:'«{label}» موجود على جدارك بالبث نفسه. ماذا تريد أن تفعل؟',
   keepTile:'الإبقاء على البلاطة الحالية', addSecond:'إضافته كبلاطة ثانية على أي حال',
+  manageMirrors:'إدارة مصادر تلك البلاطة بدلًا من ذلك',
   dupChanMsg:'«{a}» موجود على جدارك ويستخدم قناة اليوتيوب نفسها التي تستخدمها «{b}».{shared} ماذا تريد أن تفعل؟',
   sharedNote:' ملاحظة: {names} تشتركان في قناة يوتيوب واحدة — المشغّل المضمّن يعرض البث نفسه.',
-  replaceWith:'استبدالها بـ«{name}»',
-  mirLabel:'المصدر {n}', mirYt:'يوتيوب', mirWeb:'الموقع',
-  mirActive:'نشط', mirSwitch:'تبديل',
+  replaceWith:'إعادة تسميتها إلى «{name}»',
   dupMirMsg:'«{a}» موجود على جدارك من مصدر آخر. هل تريد تبديل البلاطة إلى {to} أم إضافة بلاطة ثانية؟',
   mirSwitchTo:'تبديل البلاطة إلى {to}',
-  toastMirror:'تم تبديل {label} إلى {src}.',
+  mirSourceYt:'بث يوتيوب', mirSourceWeb:'بث الموقع',
+  webSuffix:'{name} (بث الموقع)',
   toastHandle:'روابط المعرّف (@name) لا يمكن تثبيتها. استخدم رابط معرّف القناة: youtube.com/channel/UC…',
-  toastRumble:'بالنسبة لرامبل، استخدم رابط التضمين (rumble.com/embed/…) من قائمة المشاركة.',
-  toastUnrecognized:'تعذّر التعرف على الرابط. المدعوم: يوتيوب، تويتش، كيك، تضمين رامبل، ‎.m3u8',
+  toastRumblePage:'تمت إضافة صفحة رامبل كتضمين موقع. إذا بقيت فارغة، استخدم رابط التضمين (rumble.com/embed/…) من قائمة المشاركة.',
+  toastWebEmbed:'تمت الإضافة كتضمين موقع. إذا بقيت البلاطة فارغة فإن الموقع يرفض التضمين — جرّب رابط يوتيوب أو m3u8 كمصدر بديل.',
+  toastUnrecognized:'تعذّر التعرف على الرابط. المدعوم: يوتيوب، تويتش، كيك، تضمين رامبل، ديلي موشن، فيميو، ‎.m3u8، أو أي رابط موقع',
   toastFull:'الشبكة ممتلئة — الحد الأقصى {max} بثًا.',
   toastAddFirst:'أضف بثًا أولًا.',
   toastCopied:'نُسخ رابط الشبكة — أرسله لمن تشاء.', promptCopy:'انسخ رابط شبكتك:',
-  toastNoHls:'هذا المتصفح لا يدعم تشغيل بث HLS.',
-  toastAdded:'تمت إضافة {label} — ستعرض البلاطة تلقائيًا أي بث مباشر على القناة.',
-  toastPreset:'تم تحميل شبكة «{name}» — عدّلها بتغيير الروابط',
+  toastAdded:'تمت إضافة {label}.',
+  toastAddedChan:'تمت إضافة {label} — ستعرض البلاطة تلقائيًا أي بث مباشر على القناة.',
+  toastPreset:'تم تحميل {name} — أعد تسمية أي بلاطة أو استبدلها لتناسبك',
+  toastRenamed:'تمت إعادة التسمية إلى {name}',
+  toastMirAdded:'تمت إضافة المصدر — اضغط «تبديل» لتشغيله.',
+  toastMirDup:'هذا الرابط مضاف بالفعل كمصدر لهذه البلاطة.',
+  toastMirActiveDel:'بدّل إلى مصدر آخر أولًا — لا يمكن حذف المصدر النشط.',
+  toastMirSwitched:'تم التبديل إلى المصدر {n} — {label}',
   offairBig:'خارج البث', offairSub:'بانتظار البث المباشر التالي على هذه القناة…',
-  statusLive:'مباشر', statusOff:'خارج البث',
+  statusLive:'مباشر', statusOff:'خارج البث', statusChecking:'جارٍ الفحص', statusUnknown:'—',
+  errBig:'خطأ في البث', errRetryBtn:'إعادة المحاولة',
+  errNoHls:'هذا المتصفح لا يدعم تشغيل بث HLS.',
+  errLoad:'تعذّر تحميل البث — قد يكون المصدر متوقفًا.',
+  errRetrying:'البث لا يُحمّل — إعادة المحاولة ({n}/3)…',
+  errUnreachable:'تعذّر الوصول إلى البث — المصدر متوقف أو يمنع التشغيل في المتصفح (CORS).',
+  titleMirrors:'المصادر والاسم', ariaMirrors:'تفاصيل البث والمصادر البديلة',
   titleReload:'إعادة التحميل', ariaReload:'إعادة تحميل البث', titleFs:'ملء الشاشة', ariaFs:'ملء الشاشة', titleRemove:'إزالة', ariaRemove:'إزالة البث',
-  ariaCloseDir:'إغلاق الدليل', ariaClose:'إغلاق',
+  ariaCloseDir:'إغلاق الدليل', ariaClose:'إغلاق', ariaCloseMir:'إغلاق التفاصيل',
+  mirDetails:'تفاصيل البث', mirDetailsNamed:'تفاصيل البث — {name}',
+  mirNameHead:'اسم القناة', mirNamePh:'اكتب اسمًا، مثل: الجزيرة الإنجليزية', mirNameAria:'اسم القناة', mirSaveName:'حفظ الاسم',
+  mirLinkHead:'رابط المصدر', mirListHead:'المصادر البديلة',
+  mirHint:'القناة نفسها من عدة مصادر. يعمل مصدر واحد في كل مرة — «تبديل» يغيّر هذه البلاطة فقط. الصق روابط يوتيوب أو تويتش أو كيك أو تضمين رامبل أو ‎.m3u8.',
+  mirAddPh:'الصق رابطًا بديلًا لهذه القناة', mirAddAria:'رابط بديل', mirAdd:'إضافة مصدر',
+  mirRowLabel:'المصدر {n} — {label}', mirActiveBadge:'نشط', mirSwitchBtn:'تبديل', mirDelete:'حذف هذا المصدر', ariaMirDelete:'حذف المصدر',
+  demoSlot:'بث بديل — استبدله برابطك',
+  fileBanner:'يمنع يوتيوب التضمين عند فتح الصفحة من ملف محلي (خطأ 153). قدّم هذه الصفحة عبر http(s) — مثلًا <b>python3 -m http.server</b> داخل هذا المجلد ثم افتح <b>http://localhost:8000</b> — أو استضفها (GitHub Pages يعمل).',
 }
 };
 
@@ -608,19 +724,21 @@ function applyLangStatic(){
 /* Re-translate dynamic tile text in place — without touching iframes,
    so switching language never reloads the streams. */
 function retextTiles(){
-  streams.forEach((s,i)=>{
-    const st = document.getElementById('st-'+i);
-    if(st) st.textContent = st.classList.contains('live') ? t('statusLive') : t('statusOff');
-    const ov = document.getElementById('ov-'+i);
+  streams.forEach(s=>{
+    const st = document.getElementById('st-'+s.uid);
+    if(st){
+      const k = st.dataset.state || 'checking';
+      st.textContent = k==='live' ? t('statusLive') : (k==='off' ? t('statusOff') : (k==='unknown' ? t('statusUnknown') : t('statusChecking')));
+    }
+    const ov = document.getElementById('ov-'+s.uid);
     if(ov){
       const b = ov.querySelector('.big'); if(b) b.textContent = t('offairBig');
       const sb = ov.querySelector('.sub'); if(sb) sb.textContent = t('offairSub');
     }
-    const ph = document.getElementById('ph-'+i);
-    const tile = ph ? ph.closest('.tile') : null;
-    if(tile){
-      const btns = tile.querySelectorAll('.thead button');
-      const meta = [['titleReload','ariaReload'],['titleFs','ariaFs'],['titleRemove','ariaRemove']];
+    const el = tileEl(s.uid);
+    if(el){
+      const btns = el.querySelectorAll('.thead button');
+      const meta = [['titleMirrors','ariaMirrors'],['titleReload','ariaReload'],['titleFs','ariaFs'],['titleRemove','ariaRemove']];
       btns.forEach((b,bi)=>{
         if(meta[bi]){ b.title = t(meta[bi][0]); b.setAttribute('aria-label', t(meta[bi][1])); }
       });
@@ -632,8 +750,11 @@ function toggleLang(){
   LANG = LANG === 'en' ? 'ar' : 'en';
   try{ localStorage.setItem('sw_lang', LANG); }catch(e){}
   applyLangStatic();
-  if(streams.length === 0) render(); else retextTiles();
-  if(document.getElementById('dirVeil').classList.contains('open')) openDirectory();
+  updateEmpty(true);
+  retextTiles();
+  syncChrome();
+  if(document.getElementById('dirVeil').classList.contains('open')) renderDirectory();
+  if(mirrorsUid !== null) refreshMirrorModal();
 }
 
 /* ---------- view switching ---------- */
@@ -642,15 +763,18 @@ function showLanding(){document.getElementById('landing').classList.remove('hidd
 
 /* ---------- URL detection ---------- */
 function parseStream(raw){
-  const url = raw.trim();
+  const url = String(raw||'').trim();
   if(!url) return null;
 
   // direct HLS
-  if(/\.m3u8(\?|$)/i.test(url)) return {type:'hls', id:url, label:hostOf(url)};
+  if(/\.m3u8(\?|$)/i.test(url)){
+    const hu = normalizeHlsUrl(url);
+    return {type:'hls', id:hu, label:hostOf(hu)};
+  }
 
   // YouTube channel (pinned live embed — follows whatever the channel streams)
   let m = url.match(/youtube\.com\/channel\/(UC[A-Za-z0-9_-]{22})/);
-  if(m) return {type:'youtube-channel', id:m[1], label:'yt-live/'+m[1].slice(0,10)+'…'};
+  if(m) return {type:'youtube-channel', id:m[1], label:channelNameFor(m[1]) || 'yt-live/'+m[1].slice(0,10)+'…'};
   if(/youtube\.com\/@[\w.-]+/.test(url)){
     toast(t('toastHandle'));
     return null;
@@ -676,8 +800,28 @@ function parseStream(raw){
   m = url.match(/rumble\.com\/embed\/([A-Za-z0-9]+)/);
   if(m) return {type:'rumble', id:m[1], label:'rumble/'+m[1]};
   if(/rumble\.com\//.test(url)){
-    toast(t('toastRumble'));
-    return null;
+    // normal Rumble page link: no embed id available client-side — embed the
+    // page itself and point at the more reliable option
+    const wu = normalizeHlsUrl(url);
+    toast(t('toastRumblePage'));
+    return {type:'web', id:wu, label:hostOf(wu)};
+  }
+
+  // Dailymotion
+  m = url.match(/dailymotion\.com\/video\/([A-Za-z0-9]+)/) || url.match(/dai\.ly\/([A-Za-z0-9]+)/);
+  if(m) return {type:'dailymotion', id:m[1], label:'dailymotion/'+m[1]};
+
+  // Vimeo
+  m = url.match(/vimeo\.com\/(\d+)/);
+  if(m) return {type:'vimeo', id:m[1], label:'vimeo/'+m[1]};
+
+  // any other website: embed the page itself. Many sites allow it; some refuse
+  // (X-Frame-Options) — those tiles stay blank, and no client-side code can
+  // read a cross-origin page to dig the video out of it.
+  if(/^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+([\/?#]\S*)?$/i.test(url)){
+    const wu = normalizeHlsUrl(url);
+    toast(t('toastWebEmbed'));
+    return {type:'web', id:wu, label:hostOf(wu)};
   }
 
   toast(t('toastUnrecognized'));
@@ -685,7 +829,7 @@ function parseStream(raw){
 }
 function hostOf(u){try{return new URL(u).hostname}catch{return 'stream'}}
 
-/* ---------- add / remove ---------- */
+/* ---------- add / remove (surgical: touch ONLY the affected tile) ---------- */
 function addFromInput(){
   const inp = document.getElementById('urlInput');
   const s = parseStream(inp.value);
@@ -698,181 +842,334 @@ function addFromInput(){
       [
         {label:t('keepTile'), act:()=>{}},
         {label:t('addSecond'), act:()=>{pushStream(s);}},
+        {label:t('manageMirrors'), act:()=>{openMirrors(streams[dupIdx].uid);}},
       ]
     );
     return;
   }
-  if(streams.length >= MAX_STREAMS){toast(t('toastFull',{max:MAX_STREAMS}));return;}
-  streams.push(s);
   inp.value = '';
-  render();
+  const added = pushStream(s);
+  if(added) openMirrors(added.uid);   // details card: rename + mirrors, right after adding
 }
 document.getElementById('urlInput').addEventListener('keydown', e=>{if(e.key==='Enter')addFromInput();});
 
-function removeStream(i){streams.splice(i,1);render();}
-function clearGrid(){streams=[];render();}
-function reloadStream(i){render();} // re-render recreates iframes
+function removeStream(uid){
+  const i = streams.findIndex(s=>s.uid===uid);
+  if(i === -1) return;
+  if(mirrorsUid === uid) closeMirrors();        // never leave a modal bound to a dead tile
+  destroyTileResources(uid);                    // stop this tile's watchers/HLS only
+  const el = tileEl(uid); if(el) el.remove();   // other tiles untouched
+  streams.splice(i,1);
+  renumberTiles();
+  updateEmpty();
+  syncChrome();
+  refreshDirectoryIfOpen();
+}
+function clearGrid(){
+  closeMirrors();
+  streams.forEach(s=>destroyTileResources(s.uid));
+  streams = [];
+  document.querySelectorAll('#grid .tile').forEach(t=>t.remove());
+  updateEmpty();
+  syncChrome();
+  refreshDirectoryIfOpen();
+}
+function reloadStream(uid){          // rebuilds ONLY this tile's player
+  const s = streamByUid(uid); if(!s) return;
+  destroyTileResources(uid);
+  const ph = document.getElementById('ph-'+uid);
+  if(!ph) return;
+  ph.innerHTML = embedFor(s);
+  setStatusChip(uid, 'checking');    // a fresh embed hasn't reported yet
+  initTilePlayer(s);
+}
 
 /* ---------- embeds ---------- */
-function channelIframeHtml(s, idx){
+function channelIframeHtml(s){
   const allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
-  return `<iframe id="ytc-${idx}" src="https://www.youtube.com/embed/live_stream?channel=${s.id}&autoplay=1&mute=1&enablejsapi=1" allow="${allow}" allowfullscreen title="${escapeHtml(s.label)} live"></iframe>`;
+  return `<iframe id="ytc-${s.uid}" src="https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(s.id)}&autoplay=1&mute=1&enablejsapi=1" allow="${allow}" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen title="${escapeHtml(s.label)} live"></iframe>`;
 }
-function embedFor(s, idx){
+function embedFor(s){
   const host = location.hostname || 'localhost';
   const allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
   switch(s.type){
     case 'youtube':
-      return `<iframe src="https://www.youtube.com/embed/${s.id}?autoplay=1&mute=1" allow="${allow}" allowfullscreen title="YouTube stream"></iframe>`;
+      return `<iframe src="https://www.youtube.com/embed/${encodeURIComponent(s.id)}?autoplay=1&mute=1" allow="${allow}" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen title="YouTube stream"></iframe>`;
     case 'youtube-channel':
-      return channelIframeHtml(s, idx) +
-        `<div class="offair" id="ov-${idx}"><span class="pulse"></span><div class="big">${t('offairBig')}</div><div class="sub">${t('offairSub')}</div></div>`;
+      return channelIframeHtml(s) +
+        `<div class="offair" id="ov-${s.uid}"><span class="pulse"></span><div class="big">${escapeHtml(t('offairBig'))}</div><div class="sub">${escapeHtml(t('offairSub'))}</div></div>`;
     case 'twitch':
-      return `<iframe src="https://player.twitch.tv/?channel=${s.id}&parent=${host}&muted=true" allow="${allow}" allowfullscreen title="Twitch stream"></iframe>`;
+      return `<iframe src="https://player.twitch.tv/?channel=${encodeURIComponent(s.id)}&parent=${encodeURIComponent(host)}&muted=true" allow="${allow}" allowfullscreen title="Twitch stream"></iframe>`;
     case 'twitch-vod':
-      return `<iframe src="https://player.twitch.tv/?video=${s.id}&parent=${host}&muted=true" allow="${allow}" allowfullscreen title="Twitch video"></iframe>`;
+      return `<iframe src="https://player.twitch.tv/?video=${encodeURIComponent(s.id)}&parent=${encodeURIComponent(host)}&muted=true" allow="${allow}" allowfullscreen title="Twitch video"></iframe>`;
     case 'kick':
-      return `<iframe src="https://player.kick.com/${s.id}?muted=true&autoplay=true" allow="${allow}" allowfullscreen title="Kick stream"></iframe>`;
+      return `<iframe src="https://player.kick.com/${encodeURIComponent(s.id)}?muted=true&autoplay=true" allow="${allow}" allowfullscreen title="Kick stream"></iframe>`;
     case 'rumble':
-      return `<iframe src="https://rumble.com/embed/${s.id}/?autoplay=2" allow="${allow}" allowfullscreen title="Rumble stream"></iframe>`;
+      return `<iframe src="https://rumble.com/embed/${encodeURIComponent(s.id)}/?autoplay=2" allow="${allow}" allowfullscreen title="Rumble stream"></iframe>`;
+    case 'dailymotion':
+      return `<iframe src="https://geo.dailymotion.com/player.html?video=${encodeURIComponent(s.id)}&mute=true" allow="${allow}" allowfullscreen title="Dailymotion stream"></iframe>`;
+    case 'vimeo':
+      return `<iframe src="https://player.vimeo.com/video/${encodeURIComponent(s.id)}?autoplay=1&muted=1" allow="${allow}" allowfullscreen title="Vimeo stream"></iframe>`;
+    case 'web':
+      return `<iframe src="${escapeHtml(s.id)}" allow="${allow}" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen title="${escapeHtml(s.label)} website"></iframe>`;
     case 'hls':
-      return `<video id="hls-${idx}" controls muted autoplay playsinline></video>`;
+      return `<video id="hls-${s.uid}" controls muted autoplay playsinline></video>`;
   }
+  return '';
 }
-function srcTag(t){
-  return {youtube:'YT', 'youtube-channel':'YT LIVE', twitch:'TW', 'twitch-vod':'TW', kick:'KICK', rumble:'RMB', hls:'HLS'}[t] || 'SRC';
+function srcTag(type){
+  return {youtube:'YT', 'youtube-channel':'YT LIVE', twitch:'TW', 'twitch-vod':'TW', kick:'KICK', rumble:'RMB', hls:'HLS', dailymotion:'DM', vimeo:'VIM', web:'WEB'}[type] || 'SRC';
 }
 
 /* ---------- channel-pinned live watchdog ---------- */
 /* Uses the YouTube IFrame API to detect when a pinned channel's stream ends
    or the channel is offline, then rebuilds the embed every 75s until the
    channel's next live stream is up. */
-let watchers = {};        // idx -> {player, timer}
+let watchers = {};        // uid -> {player, timer}
 let ytApiRequested = false;
+let ytApiFailed = false;  // blocked / offline: callbacks get ok=false instead of hanging
 let ytApiQueue = [];
 
 function ensureYtApi(cb){
-  if(window.YT && window.YT.Player){ cb(); return; }
+  if(window.YT && window.YT.Player){ cb(true); return; }
+  if(ytApiFailed){ cb(false); return; }
   ytApiQueue.push(cb);
   if(!ytApiRequested){
     ytApiRequested = true;
     const sc = document.createElement('script');
     sc.src = 'https://www.youtube.com/iframe_api';
+    sc.onerror = ()=>{
+      ytApiFailed = true;
+      const q = ytApiQueue; ytApiQueue = [];
+      q.forEach(f=>{try{f(false)}catch(e){}});
+    };
     document.head.appendChild(sc);
   }
 }
 window.onYouTubeIframeAPIReady = function(){
-  ytApiQueue.forEach(cb=>{try{cb()}catch(e){}});
-  ytApiQueue = [];
+  const q = ytApiQueue; ytApiQueue = [];
+  q.forEach(cb=>{try{cb(true)}catch(e){}});
 };
 
-function clearWatchers(){
-  Object.values(watchers).forEach(w=>{
+/* teardown for ONE tile: its watchdog timer, YT player and HLS instance.
+   Never touches other tiles — this is what keeps updates isolated. */
+function destroyTileResources(uid){
+  const w = watchers[uid];
+  if(w){
     if(w.timer) clearInterval(w.timer);
     if(w.player && w.player.destroy){ try{w.player.destroy()}catch(e){} }
-  });
-  watchers = {};
+    delete watchers[uid];
+  }
+  const h = hlsPlayers[uid];
+  if(h){ try{h.destroy()}catch(e){} delete hlsPlayers[uid]; }
 }
 
-function watchChannelTile(idx, s){
-  ensureYtApi(()=>{
-    const iframe = document.getElementById('ytc-'+idx);
-    if(!iframe) return;
-    const w = watchers[idx] || (watchers[idx] = {player:null, timer:null});
+function watchChannelTile(s){
+  ensureYtApi(ok=>{
+    if(!ok){ setStatusChip(s.uid, 'unknown'); return; }  // API blocked — don't sit on CHECKING forever
+    const iframe = document.getElementById('ytc-'+s.uid);
+    if(!iframe || s.type !== 'youtube-channel') return;
+    const w = watchers[s.uid] || (watchers[s.uid] = {player:null, timer:null});
+    if(w.player) return; // two queued API callbacks must not double-attach
     try{
       w.player = new YT.Player(iframe, {
         events:{
           onStateChange: e=>{
-            if(e.data === YT.PlayerState.PLAYING) setOnAir(idx, true);
-            else if(e.data === YT.PlayerState.ENDED) setOnAir(idx, false, s);
+            if(e.data === YT.PlayerState.PLAYING) setOnAir(s.uid, true);
+            else if(e.data === YT.PlayerState.ENDED) setOnAir(s.uid, false, s);
           },
-          onError: ()=> setOnAir(idx, false, s)   // channel currently not live
+          onError: ()=> setOnAir(s.uid, false, s)   // channel currently not live
         }
       });
     }catch(e){}
   });
 }
 
-function setOnAir(idx, live, s){
-  const ov = document.getElementById('ov-'+idx);
-  const st = document.getElementById('st-'+idx);
+/* status chip: state is stored on the element so a language switch can
+   re-translate it without asking the player anything. */
+function setStatusChip(uid, state){
+  const st = document.getElementById('st-'+uid);
+  if(!st) return;
+  st.dataset.state = state;
+  st.className = 'status ' + (state==='live' ? 'live' : 'off');
+  st.textContent = state==='live' ? t('statusLive')
+                 : state==='off' ? t('statusOff')
+                 : state==='unknown' ? t('statusUnknown')
+                 : t('statusChecking');
+}
+
+function setOnAir(uid, live, s){
+  // late YT events (in-flight postMessage after destroy) must not resurrect a
+  // watcher for a tile that was removed or mirror-switched to another type
+  const cur = streamByUid(uid);
+  if(!cur || cur.type !== 'youtube-channel'){
+    const stale = watchers[uid];
+    if(stale && stale.timer) clearInterval(stale.timer);
+    delete watchers[uid];
+    return;
+  }
+  const ov = document.getElementById('ov-'+uid);
   if(ov) ov.style.display = live ? 'none' : 'flex';
-  if(st){ st.textContent = live ? t('statusLive') : t('statusOff'); st.className = 'status ' + (live ? 'live' : 'off'); }
-  const w = watchers[idx] || (watchers[idx] = {player:null, timer:null});
+  setStatusChip(uid, live ? 'live' : 'off');
+  const w = watchers[uid] || (watchers[uid] = {player:null, timer:null});
   if(live){
     if(w.timer){ clearInterval(w.timer); w.timer = null; }
   } else if(!w.timer && s){
-    w.timer = setInterval(()=> rebuildChannelIframe(idx, s), 75000);
+    w.timer = setInterval(()=> rebuildChannelIframe(s), 75000);
   }
 }
 
-function rebuildChannelIframe(idx, s){
-  const holder = document.getElementById('ph-'+idx);
-  if(!holder){ // tile was removed
-    const w = watchers[idx]; if(w && w.timer) clearInterval(w.timer); delete watchers[idx]; return;
+function rebuildChannelIframe(s){
+  const holder = document.getElementById('ph-'+s.uid);
+  if(!holder || !streamByUid(s.uid) || s.type !== 'youtube-channel'){ // tile removed or mirror-switched away
+    const w = watchers[s.uid]; if(w && w.timer) clearInterval(w.timer); delete watchers[s.uid]; return;
   }
-  const w = watchers[idx];
+  const w = watchers[s.uid];
   if(w && w.player && w.player.destroy){ try{w.player.destroy()}catch(e){} w.player = null; }
   const old = holder.querySelector('iframe'); if(old) old.remove();
-  holder.insertAdjacentHTML('afterbegin', channelIframeHtml(s, idx));
-  watchChannelTile(idx, s);
+  holder.insertAdjacentHTML('afterbegin', channelIframeHtml(s));
+  watchChannelTile(s);
 }
 
-/* ---------- render ---------- */
+/* ---------- render ----------
+   render() = full rebuild. ONLY for boot / preset load / shared-link restore.
+   Add / remove / reload go through mountTile / removeStream / reloadStream,
+   which touch a single tile and leave every other player running. */
 function render(){
-  clearWatchers();
-  const grid = document.getElementById('grid');
-  grid.innerHTML = '';
-  if(streams.length === 0){
-    grid.innerHTML = `<div id="empty">
-      <div class="big">${t('emptyBig')}</div>
-      <div>${t('emptyHint')}</div>
-      <div>${t('emptyTry')} <code>https://www.youtube.com/watch?v=jfKfPfyJRdk</code></div></div>`;
+  streams.forEach(withUid);
+  streams.forEach(s=>destroyTileResources(s.uid));
+  document.querySelectorAll('#grid .tile').forEach(t=>t.remove());
+  streams.forEach(mountTile);
+  updateEmpty();
+  syncChrome();
+}
+
+function buildTileEl(s, pos){
+  const tile = document.createElement('div');
+  tile.className = 'tile';
+  tile.dataset.uid = s.uid;
+  // status starts neutral — LIVE only after the watchdog confirms playback
+  const statusChip = s.type==='youtube-channel'
+    ? `<span class="status off" id="st-${s.uid}" data-state="checking">${escapeHtml(t('statusChecking'))}</span>` : '';
+  tile.innerHTML = `
+    <div class="thead">
+      <span class="tally"></span>
+      <span class="src">${srcTag(s.type)} ${String(pos).padStart(2,'0')}</span>
+      <span class="name">${escapeHtml(s.label)}</span>
+      ${statusChip}
+      <button onclick="openMirrors(${s.uid})" title="${escapeHtml(t('titleMirrors'))}" aria-label="${escapeHtml(t('ariaMirrors'))}">⧉</button>
+      <button onclick="reloadStream(${s.uid})" title="${escapeHtml(t('titleReload'))}" aria-label="${escapeHtml(t('ariaReload'))}">⟳</button>
+      <button onclick="fsTile(this)" title="${escapeHtml(t('titleFs'))}" aria-label="${escapeHtml(t('ariaFs'))}">⛶</button>
+      <button onclick="removeStream(${s.uid})" title="${escapeHtml(t('titleRemove'))}" aria-label="${escapeHtml(t('ariaRemove'))}">✕</button>
+    </div>
+    <div class="player" id="ph-${s.uid}">${embedFor(s)}</div>`;
+  return tile;
+}
+
+function mountTile(s){
+  updateEmpty(); // drop the placeholder before first tile lands
+  document.getElementById('grid').appendChild(buildTileEl(s, streams.indexOf(s)+1));
+  initTilePlayer(s);
+}
+
+function initTilePlayer(s){
+  if(s.type === 'hls') initHls(s);
+  else if(s.type === 'youtube-channel') watchChannelTile(s);
+}
+
+/* HLS: robust init — autoplay on manifest, retry transient network errors,
+   recover media errors, on-tile error message with Retry otherwise. */
+function initHls(s){
+  const v = document.getElementById('hls-'+s.uid);
+  if(!v) return;
+  if(v.canPlayType('application/vnd.apple.mpegurl')){       // Safari native
+    v.src = s.id;
+    v.addEventListener('loadedmetadata', ()=>{ hideTileError(s.uid); v.play().catch(()=>{}); });
+    v.addEventListener('error', ()=> showTileError(s.uid, t('errLoad')));
+  } else if(window.Hls && Hls.isSupported()){
+    const h = new Hls();
+    hlsPlayers[s.uid] = h;
+    let netRetries = 0;
+    h.on(Hls.Events.MANIFEST_PARSED, ()=>{ hideTileError(s.uid); v.play().catch(()=>{}); });
+    h.on(Hls.Events.ERROR, (e, data)=>{
+      if(!data.fatal) return;
+      if(data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 3){
+        netRetries++;
+        showTileError(s.uid, t('errRetrying', {n:netRetries}));
+        setTimeout(()=>{ if(hlsPlayers[s.uid] === h) h.startLoad(); }, 1500 * netRetries);
+      } else if(data.type === Hls.ErrorTypes.MEDIA_ERROR){
+        h.recoverMediaError();
+      } else {
+        showTileError(s.uid, t('errUnreachable'));
+      }
+    });
+    h.loadSource(s.id);
+    h.attachMedia(v);
+  } else {
+    showTileError(s.uid, t('errNoHls'));
   }
-  streams.forEach((s,i)=>{
-    const tile = document.createElement('div');
-    tile.className = 'tile';
-    const statusChip = s.type==='youtube-channel' ? `<span class="status live" id="st-${i}">${t('statusLive')}</span>` : '';
-    tile.innerHTML = `
-      <div class="thead">
-        <span class="tally"></span>
-        <span class="src">${srcTag(s.type)} ${String(i+1).padStart(2,'0')}</span>
-        <span class="name">${escapeHtml(s.label)}</span>
-        ${statusChip}
-        <button onclick="reloadStream(${i})" title="${t('titleReload')}" aria-label="${t('ariaReload')}">⟳</button>
-        <button onclick="fsTile(this)" title="${t('titleFs')}" aria-label="${t('ariaFs')}">⛶</button>
-        <button onclick="removeStream(${i})" title="${t('titleRemove')}" aria-label="${t('ariaRemove')}">✕</button>
-      </div>
-      <div class="player" id="ph-${i}">${embedFor(s,i)}</div>`;
-    grid.appendChild(tile);
+}
+
+function showTileError(uid, msg){
+  const ph = document.getElementById('ph-'+uid); if(!ph) return;
+  let ov = ph.querySelector('.offair.err');
+  if(!ov){
+    ph.insertAdjacentHTML('beforeend',
+      `<div class="offair err"><span class="pulse"></span><div class="big">${escapeHtml(t('errBig'))}</div><div class="sub"></div>
+       <button class="btn" onclick="reloadStream(${uid})">${escapeHtml(t('errRetryBtn'))}</button></div>`);
+    ov = ph.querySelector('.offair.err');
+  }
+  ov.querySelector('.sub').textContent = msg;
+  ov.style.display = 'flex';
+}
+function hideTileError(uid){
+  const ph = document.getElementById('ph-'+uid); if(!ph) return;
+  const ov = ph.querySelector('.offair.err'); if(ov) ov.remove();
+}
+
+/* force=true re-renders the placeholder in the current language */
+function updateEmpty(force){
+  const grid = document.getElementById('grid');
+  let empty = document.getElementById('empty');
+  if(streams.length === 0){
+    if(empty && force){ empty.remove(); empty = null; }
+    if(!empty) grid.insertAdjacentHTML('afterbegin', `<div id="empty">
+      <div class="big">${escapeHtml(t('emptyBig'))}</div>
+      <div>${escapeHtml(t('emptyHint'))}</div>
+      <div>${escapeHtml(t('emptyTry'))} <code>https://www.youtube.com/watch?v=jfKfPfyJRdk</code></div></div>`);
+  } else if(empty){ empty.remove(); }
+}
+
+function renumberTiles(){ // text-only relabel; no player is touched
+  document.querySelectorAll('#grid .tile').forEach((el,i)=>{
+    const s = streamByUid(Number(el.dataset.uid));
+    const tag = el.querySelector('.src');
+    if(s && tag) tag.textContent = srcTag(s.type) + ' ' + String(i+1).padStart(2,'0');
   });
-  // init HLS players
-  streams.forEach((s,i)=>{
-    if(s.type!=='hls') return;
-    const v = document.getElementById('hls-'+i);
-    if(!v) return;
-    if(v.canPlayType('application/vnd.apple.mpegurl')){ v.src = s.id; }
-    else if(window.Hls && Hls.isSupported()){
-      const h = new Hls(); h.loadSource(s.id); h.attachMedia(v);
-    } else { toast(t('toastNoHls')); }
-  });
-  // init channel watchdogs (auto-resume when the channel goes live again)
-  streams.forEach((s,i)=>{ if(s.type==='youtube-channel') watchChannelTile(i, s); });
+}
+
+function syncChrome(){
   applyLayout();
   document.getElementById('count').textContent = streams.length + ' / ' + MAX_STREAMS;
   updateUrl();
 }
-function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+function escapeHtml(t){return String(t).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 function fsTile(btn){
   const tile = btn.closest('.tile');
-  if(document.fullscreenElement){document.exitFullscreen();}
-  else{tile.requestFullscreen && tile.requestFullscreen();}
+  if(!tile) return;
+  if(document.fullscreenElement === tile){ document.exitFullscreen(); return; }
+  // already fullscreen on ANOTHER tile: hand it over instead of just exiting
+  if(document.fullscreenElement){
+    document.exitFullscreen().then(()=>{ tile.requestFullscreen && tile.requestFullscreen(); }).catch(()=>{});
+    return;
+  }
+  tile.requestFullscreen && tile.requestFullscreen();
 }
 
 /* ---------- layout ---------- */
 function autoCols(n){
-  if(n<=1)return 1; if(n<=4)return 2; if(n<=9)return 3; return 4;
+  if(n<=1)return 1; if(n<=4)return 2; if(n<=9)return 3; if(n<=16)return 4; return 5;
 }
 function applyLayout(){
   const grid = document.getElementById('grid');
@@ -886,32 +1183,81 @@ function applyLayout(){
 }
 
 /* ---------- share / restore ---------- */
+/* ids from share links are attacker-controlled — validate before they reach any embed URL */
+const ID_OK = {
+  youtube: /^[A-Za-z0-9_-]{11}$/,
+  'youtube-channel': /^UC[A-Za-z0-9_-]{22}$/,
+  twitch: /^[A-Za-z0-9_]{3,25}$/,
+  'twitch-vod': /^\d+$/,
+  kick: /^[A-Za-z0-9_-]+$/,
+  rumble: /^[A-Za-z0-9]+$/,
+  // hls ids are full URLs users pasted — often without a protocol. They never
+  // land in HTML (only hls.loadSource / video.src), so just ban dangerous chars.
+  hls: /^[^\s"'<>`]+$/,
+  dailymotion: /^[A-Za-z0-9]+$/,
+  vimeo: /^\d+$/,
+  web: /^https?:\/\/[^\s"'<>`]+$/i,   // full URL, dangerous chars banned
+};
+/* heal protocol-less HLS / website URLs so they can actually load */
+function normalizeHlsUrl(u){
+  if(/^https?:\/\//i.test(u)) return u;
+  if(u.startsWith('//')) return 'https:' + u;
+  return 'https://' + u;
+}
+function validId(type, id){ const re = ID_OK[type]; return !!re && re.test(id); }
+
+/* friendly name for a known directory channel id */
+function channelNameFor(id){
+  const c = DIRECTORY.find(d=>d.id===id);
+  return c ? dirName(c) : null;
+}
+/* the auto-label a stream gets when the user never named it (e.g. "youtube/jfKf…") */
+function defaultLabelFor(type, id){
+  if(type==='hls' || type==='web') return hostOf(id);
+  if(type==='youtube-channel') return 'yt-live/'+id.slice(0,10)+'…';
+  return type.replace('-vod','')+'/'+id;
+}
 function encodeStreams(){
   return streams.map(s=>{
-    const t = {youtube:'y', 'youtube-channel':'c', twitch:'t', 'twitch-vod':'v', kick:'k', rumble:'r', hls:'h'}[s.type];
-    return t + ':' + encodeURIComponent(s.id);
+    const code = {youtube:'y', 'youtube-channel':'c', twitch:'t', 'twitch-vod':'v', kick:'k', rumble:'r', hls:'h', dailymotion:'d', vimeo:'m', web:'w'}[s.type];
+    // label travels in the link so restored grids keep their names
+    return code + ':' + encodeURIComponent(s.id) + ':' + encodeURIComponent(s.label);
   }).join(',');
 }
 function decodeStreams(str){
-  const types = {y:'youtube', c:'youtube-channel', t:'twitch', v:'twitch-vod', k:'kick', r:'rumble', h:'hls'};
+  const types = {y:'youtube', c:'youtube-channel', t:'twitch', v:'twitch-vod', k:'kick', r:'rumble', h:'hls', d:'dailymotion', m:'vimeo', w:'web'};
+  // NOTE: expects the RAW (still percent-encoded) g value — a malformed or
+  // tampered part is skipped, never allowed to kill the whole restore
   return str.split(',').map(part=>{
-    const i = part.indexOf(':'); if(i<1) return null;
-    const type = types[part.slice(0,i)]; const id = decodeURIComponent(part.slice(i+1));
-    if(!type || !id) return null;
-    let label;
-    if(type==='hls') label = hostOf(id);
-    else if(type==='youtube-channel') label = 'yt-live/'+id.slice(0,10)+'…';
-    else label = type.replace('-vod','')+'/'+id;
-    return {type, id, label};
+    try{
+      const i = part.indexOf(':'); if(i<1) return null;
+      const type = types[part.slice(0,i)];
+      const rest = part.slice(i+1);
+      const j = rest.indexOf(':');                    // old links have no label part
+      let id = decodeURIComponent(j===-1 ? rest : rest.slice(0,j));
+      // validate BEFORE any normalisation — prepending a scheme to a hostile id
+      // would let e.g. "javascript:…" slip past the `web` pattern
+      if(!type || !id || !validId(type, id)) return null;
+      if(type==='hls') id = normalizeHlsUrl(id);   // heal old protocol-less saves
+      let label = j===-1 ? null : decodeURIComponent(rest.slice(j+1));
+      if(!label){
+        if(type==='youtube-channel') label = channelNameFor(id) || defaultLabelFor(type, id);
+        else label = defaultLabelFor(type, id);
+      }
+      return {type, id, label};
+    }catch(e){ return null; }
   }).filter(Boolean).slice(0, MAX_STREAMS);
+}
+function gridQuery(){
+  const parts = [];
+  if(streams.length) parts.push('g=' + encodeStreams());
+  if(LANG === 'ar') parts.push('lang=ar');
+  return parts.length ? '?' + parts.join('&') : location.pathname;
 }
 function updateUrl(){
   try{
-    const p = new URLSearchParams(location.search);
-    const parts = [];
-    if(streams.length) parts.push('g=' + encodeStreams());
-    if(p.get('lang')) parts.push('lang=' + p.get('lang'));
-    history.replaceState(null,'', parts.length ? '?' + parts.join('&') : location.pathname);
+    const q = gridQuery();
+    history.replaceState(null,'', q === location.pathname ? location.pathname : q);
   }catch(e){}
 }
 function shareGrid(){
@@ -925,16 +1271,21 @@ function shareGrid(){
 /* ---------- toast ---------- */
 let toastTimer;
 function toast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 3500);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 3500);
 }
 
-/* ---------- channel directory (45 channels, 13 countries) ---------- */
+/* ---------- channel directory (46 channels, 13 countries) ---------- */
+/* An entry with an `hls` field has a second source for the same channel: the
+   broadcaster's own website stream. Both are pre-loaded into the tile's mirror
+   list when the channel is added, so mirrors are managed in exactly one place
+   (the tile's ⧉ modal) rather than in two competing UIs. */
 const DIRECTORY = [
   {name:'ABC News (Australia)', ar:'إيه بي سي نيوز (أستراليا)', country:'Australia', lang:'English', id:'UCxcrzzhQDj5zKJbXfIscCtg'},
   {name:'CBC News', ar:'سي بي سي نيوز', country:'Canada', lang:'English', id:'UCuFFtHWoLl5fauMMD5Ww2jA'},
+  {name:'CPAC', ar:'سي باك', country:'Canada', lang:'English', id:'UCFZSV_So_OaXgXVzgu58tJQ'},
   {name:'CGTN', ar:'سي جي تي إن', country:'China', lang:'English', id:'UCgrNz-aDmcr2uuto8_DL2jg'},
   {name:'BFM TV', ar:'بي إف إم تي في', country:'France', lang:'French', id:'UCXwDLMDV86ldKoFVc_g8P0g'},
   {name:'Euronews', ar:'يورونيوز', country:'France', lang:'English', id:'UCSrZ3UV4jOidv8ppoVuvW9Q'},
@@ -980,62 +1331,28 @@ const DIRECTORY = [
   {name:'Yahoo Finance', ar:'ياهو فاينانس', country:'USA', lang:'English', id:'UCEAZeUIeJs0IjQiqTCdVSIg'},
 ];
 function dirName(c){ return LANG==='ar' ? (c.ar || c.name) : c.name; }
+function dirByChannelId(id){ return DIRECTORY.find(d=>d.id===id) || null; }
 
-/* ---------- channel mirrors (multi-source channels) ----------
-   A directory entry with an `hls` field has two sources for the same
-   channel: Mirror 1 • YouTube (live embed) and Mirror 2 • Website (HLS).
-   The active mirror is chosen per channel (button-only, manual control),
-   remembered in localStorage, and switching while the channel is on the
-   wall swaps that tile's source in place. */
-let dirMirror = {};   // channel name -> active mirror index
-try{ dirMirror = JSON.parse(localStorage.getItem('sw_mirrors')) || {}; }catch(e){}
-
-function mirrorsOf(c){
-  const m = [{type:'youtube-channel', id:c.id}];
-  if(c.hls) m.push({type:'hls', id:c.hls});
-  return m;
+/* every source the directory knows for a channel — becomes the tile's mirror list */
+function dirSources(c){
+  const out = [{type:'youtube-channel', id:c.id, label:dirName(c)}];
+  if(c.hls) out.push({type:'hls', id:c.hls, label:t('webSuffix',{name:dirName(c)})});
+  return out;
 }
-function mirName(mi){ return t('mirLabel',{n:mi+1}) + ' • ' + (mi===0 ? t('mirYt') : t('mirWeb')); }
-function activeSrc(c){
-  const ms = mirrorsOf(c);
-  return ms[Math.min(dirMirror[c.name] || 0, ms.length - 1)];
+function mkDirStream(c){
+  const ms = dirSources(c);
+  return {type:ms[0].type, id:ms[0].id, label:dirName(c), mirrors:ms.map(m=>({...m}))};
+}
+/* mirror-aware: a tile "has" a source if it's playing it OR carries it as a mirror */
+function streamHasSource(s, src){
+  if(s.type===src.type && s.id===src.id) return true;
+  return (s.mirrors||[]).some(m=>m.type===src.type && m.id===src.id);
 }
 function onWallIdx(c){
-  const ms = mirrorsOf(c);
-  return streams.findIndex(s=>ms.some(m=>m.type===s.type && m.id===s.id));
+  const ms = dirSources(c);
+  return streams.findIndex(s=>ms.some(src=>streamHasSource(s, src)));
 }
-function mirrorChips(c, ci){
-  const ms = mirrorsOf(c);
-  if(ms.length < 2) return '';
-  const act = Math.min(dirMirror[c.name] || 0, ms.length - 1);
-  return `<div class="mirrors">` + ms.map((m,mi)=>{
-    const on = mi === act;
-    return `<button class="mir${on?' active':''}" onclick="setMirror(${ci},${mi},event)"
-      title="${on?t('mirActive'):t('mirSwitch')}" aria-pressed="${on}">${on?'✓ ':''}${mirName(mi)}</button>`;
-  }).join('') + `</div>`;
-}
-function setMirror(ci, mi, ev){
-  if(ev) ev.stopPropagation();
-  const c = DIRECTORY[ci];
-  if(mi === Math.min(dirMirror[c.name] || 0, mirrorsOf(c).length - 1)) return;
-  const wallIdx = onWallIdx(c);          // check before switching
-  dirMirror[c.name] = mi;
-  try{ localStorage.setItem('sw_mirrors', JSON.stringify(dirMirror)); }catch(e){}
-  const row = document.querySelector('#dirBody .dir-row[data-ci="'+ci+'"]');
-  if(row) row.querySelectorAll('.mir').forEach((b,i)=>{
-    const on = i === mi;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-pressed', on);
-    b.title = on ? t('mirActive') : t('mirSwitch');
-    b.textContent = (on ? '✓ ' : '') + mirName(i);
-  });
-  if(wallIdx !== -1){                    // channel is on the wall — swap the tile in place
-    const src = mirrorsOf(c)[mi];
-    streams[wallIdx] = {type:src.type, id:src.id, label:dirName(c)};
-    render();
-    toast(t('toastMirror', {label:dirName(c), src:mirName(mi)}));
-  }
-}
+function srcHumanName(src){ return src.type==='hls' ? t('mirSourceWeb') : t('mirSourceYt'); }
 
 /* ---------- directory live probe (no API key) ----------
    Reuses the same trick as the tile watchdog: a hidden, non-autoplaying
@@ -1085,13 +1402,14 @@ function probeOne(id){
     paintLiveDots(id);
   };
   killTimer = setTimeout(()=>finish('unknown'), PROBE_TIMEOUT + 4000); // covers blocked/slow IFrame API
-  ensureYtApi(()=>{
+  ensureYtApi(ok=>{
     if(done) return;
+    if(!ok){ finish('unknown'); return; }              // API blocked — badge shows '—', never hangs on '···'
     const pen = document.getElementById('probe-pen');
     const iframe = document.createElement('iframe');
     iframe.setAttribute('data-probe', id);
     iframe.width = 160; iframe.height = 90;
-    iframe.src = 'https://www.youtube.com/embed/live_stream?channel=' + id + '&enablejsapi=1';
+    iframe.src = 'https://www.youtube.com/embed/live_stream?channel=' + encodeURIComponent(id) + '&enablejsapi=1';
     pen.appendChild(iframe);
     clearTimeout(killTimer);
     killTimer = setTimeout(()=>finish('unknown'), PROBE_TIMEOUT);
@@ -1114,7 +1432,7 @@ function probeOne(id){
   });
 }
 function paintLiveDots(onlyId){
-  document.querySelectorAll('#dirBody .dir-row').forEach(row=>{
+  document.querySelectorAll('#dirBody .dir-row[data-ch]').forEach(row=>{
     const id = row.getAttribute('data-ch');
     if(onlyId && id !== onlyId) return;
     const badge = row.querySelector('.live-ind');
@@ -1127,14 +1445,28 @@ function paintLiveDots(onlyId){
   });
 }
 
+/* ---------- directory rendering ---------- */
 let dirSelectMode = false;
 const dirSelected = new Set();   // indices into DIRECTORY
 
-function openDirectory(){
+function renderDirectory(){
   const body = document.getElementById('dirBody');
   const countries = [...new Set(DIRECTORY.map(c=>c.country))];
   document.getElementById('dirCount').textContent = t('dirCount', {n:DIRECTORY.length, c:countries.length});
   let html = '';
+  // live "on your wall" section — every stream, including custom links
+  if(streams.length && !dirSelectMode){
+    html += `<div class="dir-country">${escapeHtml(t('onWallHead', {n:streams.length}))}</div>`;
+    streams.forEach(s=>{
+      html += `<div class="dir-row">
+        <div style="flex:1;min-width:0">
+          <div class="dn">${escapeHtml(s.label)}</div>
+          <div class="dl">${srcTag(s.type)}</div>
+        </div>
+        <button class="btn" onclick="removeStream(${s.uid})">${escapeHtml(t('removeBtn'))}</button>
+      </div>`;
+    });
+  }
   countries.forEach(country=>{
     const cLabel = LANG==='ar' ? (AR_COUNTRY[country] || country) : country;
     html += `<div class="dir-country">${escapeHtml(cLabel)}</div>`;
@@ -1142,12 +1474,11 @@ function openDirectory(){
       if(c.country !== country) return;
       const onWall = onWallIdx(c) !== -1;
       const langLabel = LANG==='ar' ? (AR_LANGNAME[c.lang] || c.lang) : c.lang;
-      const nameCell = `<div style="flex:1">
+      const nameCell = `<div style="flex:1;min-width:0">
           <div class="dn">${escapeHtml(dirName(c))}</div>
-          <div class="dl">${escapeHtml(langLabel)}${onWall?' &nbsp;<span class="onwall">'+t('dirOnWall')+'</span>':''}</div>
-          ${mirrorChips(c, ci)}
+          <div class="dl">${escapeHtml(langLabel)}${onWall?' <span class="onwall">'+escapeHtml(t('dirOnWall'))+'</span>':''}</div>
         </div>`;
-      const badge = `<span class="live-ind is-chk">${t('badgeChecking')}</span>`;
+      const badge = `<span class="live-ind is-chk">${escapeHtml(t('badgeChecking'))}</span>`;
       if(dirSelectMode){
         const sel = dirSelected.has(ci);
         html += onWall
@@ -1162,16 +1493,22 @@ function openDirectory(){
       } else {
         html += `<div class="dir-row" data-ch="${c.id}" data-ci="${ci}">
           ${nameCell}${badge}
-          <button class="btn" onclick="dirAdd(${ci})">${t('dirAdd')}</button>
+          <button class="btn" onclick="dirAdd(${ci})">${escapeHtml(t('dirAdd'))}</button>
         </div>`;
       }
     });
   });
   body.innerHTML = html;
   updateDirFoot();
-  document.getElementById('dirVeil').classList.add('open');
   paintLiveDots();                                        // apply cached states
   queueProbes([...new Set(DIRECTORY.map(c=>c.id))]);      // check the rest
+}
+function openDirectory(){
+  renderDirectory();
+  document.getElementById('dirVeil').classList.add('open');
+}
+function refreshDirectoryIfOpen(){
+  if(document.getElementById('dirVeil').classList.contains('open')) renderDirectory();
 }
 function closeDirectory(){
   document.getElementById('dirVeil').classList.remove('open');
@@ -1183,7 +1520,7 @@ function closeDirectory(){
 function toggleSelectMode(){
   dirSelectMode = !dirSelectMode;
   dirSelected.clear();
-  openDirectory();   // re-render rows in the new mode
+  renderDirectory();   // re-render rows in the new mode
 }
 function toggleRowSel(ci){
   if(!dirSelectMode) return;
@@ -1223,11 +1560,12 @@ function addSelected(){
     const c = DIRECTORY[ci];
     if(onWallIdx(c) !== -1){ skipped++; return; }
     if(streams.length >= MAX_STREAMS){ full = true; return; }
-    const src = activeSrc(c);
-    streams.push({type:src.type, id:src.id, label:dirName(c)});
+    const s = withUid(mkDirStream(c));
+    streams.push(s);
+    mountTile(s);
     added++;
   });
-  if(added) render();
+  if(added){ syncChrome(); }
   closeDirectory();
   let msg = t('toastBulkAdded', {n:added});
   if(skipped) msg += ' ' + t('toastBulkSkipped', {k:skipped});
@@ -1237,15 +1575,14 @@ function addSelected(){
 
 function dirAdd(ci){
   const c = DIRECTORY[ci];
-  const src = activeSrc(c);
-  const newStream = {type:src.type, id:src.id, label:dirName(c)};
-  // duplicate detection: any mirror of this channel already on the wall
   const dupIdx = onWallIdx(c);
   if(dupIdx !== -1){
     const cur = streams[dupIdx];
-    const sameSrc = cur.type===newStream.type && cur.id===newStream.id;
-    if(sameSrc && newStream.type==='youtube-channel'){
-      // find every directory name that shares this channel (e.g. CNN / CNN International)
+    const primary = dirSources(c)[0];
+    const sameSrc = cur.type===primary.type && cur.id===primary.id;
+    if(sameSrc){
+      // exactly this channel's YouTube feed is already playing — offer a rename,
+      // because CNN / CNN International & friends share one underlying channel
       const siblings = DIRECTORY.filter(d=>d.id===c.id).map(d=>dirName(d));
       const joiner = LANG==='ar' ? ' و' : ' and ';
       const shared = siblings.length>1 ? t('sharedNote', {names:siblings.join(joiner)}) : '';
@@ -1253,36 +1590,174 @@ function dirAdd(ci){
         t('dupChanMsg', {a:cur.label, b:dirName(c), shared}),
         [
           {label:t('keepTile'), act:()=>{}},
-          {label:t('replaceWith', {name:dirName(c)}), act:()=>{streams[dupIdx]=newStream; render();}},
-          {label:t('addSecond'), act:()=>{pushStream(newStream);}},
+          {label:t('replaceWith', {name:dirName(c)}), act:()=>{relabelStream(cur.uid, dirName(c));}},
+          {label:t('addSecond'), act:()=>{pushStream(mkDirStream(c));}},
         ]
       );
-    } else if(sameSrc){
-      // identical HLS source already on the wall
-      openChooser(t('dupUrlMsg', {label:cur.label}), [
-        {label:t('keepTile'), act:()=>{}},
-        {label:t('addSecond'), act:()=>{pushStream(newStream);}},
-      ]);
     } else {
-      // on the wall via the other mirror — offer an in-place switch
-      const mi = mirrorsOf(c).findIndex(m=>m.type===newStream.type && m.id===newStream.id);
-      const to = mirName(mi);
+      // on the wall via one of this channel's other sources — offer an in-place switch
+      const to = srcHumanName(primary);
       openChooser(t('dupMirMsg', {a:cur.label, to}), [
         {label:t('keepTile'), act:()=>{}},
-        {label:t('mirSwitchTo', {to}), act:()=>{streams[dupIdx]=newStream; render();}},
-        {label:t('addSecond'), act:()=>{pushStream(newStream);}},
+        {label:t('mirSwitchTo', {to}), act:()=>{switchTileToSource(cur.uid, primary);}},
+        {label:t('manageMirrors'), act:()=>{openMirrors(cur.uid);}},
+        {label:t('addSecond'), act:()=>{pushStream(mkDirStream(c));}},
       ]);
     }
     return;
   }
-  pushStream(newStream);
+  pushStream(mkDirStream(c));
 }
+
+/* same source — only the label differs, so swap text without reloading the player */
+function relabelStream(uid, label){
+  const s = streamByUid(uid); if(!s) return;
+  s.label = label;
+  const m = (s.mirrors||[]).find(x=>x.type===s.type && x.id===s.id);
+  if(m) m.label = label;
+  const el = tileEl(uid);
+  if(el){ const n = el.querySelector('.name'); if(n) n.textContent = label; }
+  refreshDirectoryIfOpen();
+  if(mirrorsUid === uid) refreshMirrorModal();
+  updateUrl();
+}
+
+/* single entry point for adding a stream: appends ONE tile, no full re-render,
+   keeps the directory open and refreshes it live so the new channel shows up */
 function pushStream(s){
-  if(streams.length >= MAX_STREAMS){toast(t('toastFull',{max:MAX_STREAMS}));return;}
+  if(streams.length >= MAX_STREAMS){toast(t('toastFull',{max:MAX_STREAMS}));return null;}
+  withUid(s);
   streams.push(s);
-  render();
-  closeDirectory();
-  toast(t('toastAdded', {label:s.label}));
+  mountTile(s);
+  syncChrome();
+  refreshDirectoryIfOpen();
+  toast(s.type==='youtube-channel' ? t('toastAddedChan',{label:s.label}) : t('toastAdded',{label:s.label}));
+  return s;
+}
+
+/* ---------- mirrors: several sources for one tile, one active at a time ----------
+   The mirror list lives on the stream object (s.mirrors); s.type/id/label always
+   reflect the ACTIVE mirror, so share links, the directory and the player need no
+   special cases. Directory channels arrive with their known sources pre-loaded. */
+let mirrorsUid = null;   // tile currently open in the mirror modal
+
+function ensureMirrors(s){
+  if(!s.mirrors || !s.mirrors.length) s.mirrors = [{type:s.type, id:s.id, label:s.label}];
+  if(!s.mirrors.some(m=>m.type===s.type && m.id===s.id)) s.mirrors.unshift({type:s.type, id:s.id, label:s.label});
+  return s.mirrors;
+}
+function mirrorIsActive(s, m){ return m.type===s.type && m.id===s.id; }
+function isAutoLabel(s){ return s.label === defaultLabelFor(s.type, s.id); }
+
+/* human-readable source URL for display */
+function linkFor(s){
+  switch(s.type){
+    case 'youtube':         return 'https://www.youtube.com/watch?v='+s.id;
+    case 'youtube-channel': return 'https://www.youtube.com/channel/'+s.id;
+    case 'twitch':          return 'https://twitch.tv/'+s.id;
+    case 'twitch-vod':      return 'https://twitch.tv/videos/'+s.id;
+    case 'kick':            return 'https://kick.com/'+s.id;
+    case 'rumble':          return 'https://rumble.com/embed/'+s.id;
+    case 'dailymotion':     return 'https://www.dailymotion.com/video/'+s.id;
+    case 'vimeo':           return 'https://vimeo.com/'+s.id;
+    case 'hls':             return s.id;
+    case 'web':             return s.id;
+    default:                return '';
+  }
+}
+
+function openMirrors(uid){
+  const s = streamByUid(uid); if(!s) return;
+  mirrorsUid = uid;
+  ensureMirrors(s);
+  const named = !isAutoLabel(s);
+  document.getElementById('mirName').value = named ? s.label : '';
+  document.getElementById('mirInput').value = '';
+  refreshMirrorModal();
+  document.getElementById('mirVeil').classList.add('open');
+  if(!named) document.getElementById('mirName').focus();
+}
+/* repaint everything language-dependent in the modal */
+function refreshMirrorModal(){
+  const s = streamByUid(mirrorsUid); if(!s) return;
+  document.getElementById('mirTitle').textContent =
+    isAutoLabel(s) ? t('mirDetails') : t('mirDetailsNamed', {name:s.label});
+  document.getElementById('mirLink').textContent = linkFor(s);
+  renderMirrorList();
+}
+function saveMirrorName(){
+  const s = streamByUid(mirrorsUid); if(!s) return;
+  const v = document.getElementById('mirName').value.trim();
+  if(!v || v === s.label) return;
+  relabelStream(s.uid, v);
+  toast(t('toastRenamed', {name:v}));
+}
+document.getElementById('mirName').addEventListener('keydown', e=>{if(e.key==='Enter')saveMirrorName();});
+function closeMirrors(){ document.getElementById('mirVeil').classList.remove('open'); mirrorsUid = null; }
+
+function renderMirrorList(){
+  const s = streamByUid(mirrorsUid); if(!s) return;
+  const box = document.getElementById('mirList');
+  let html = '';
+  s.mirrors.forEach((m, mi)=>{
+    const active = mirrorIsActive(s, m);
+    html += `<div class="dir-row">
+      <div style="flex:1;min-width:0">
+        <div class="dn">${escapeHtml(t('mirRowLabel', {n:mi+1, label:m.label}))}</div>
+        <div class="dl">${srcTag(m.type)}</div>
+      </div>
+      ${active
+        ? `<span class="mir-active">${escapeHtml(t('mirActiveBadge'))}</span>`
+        : `<button class="btn" onclick="switchMirror(${mi})">${escapeHtml(t('mirSwitchBtn'))}</button>
+           <button class="btn" onclick="removeMirror(${mi})" title="${escapeHtml(t('mirDelete'))}" aria-label="${escapeHtml(t('ariaMirDelete'))}">✕</button>`}
+    </div>`;
+  });
+  box.innerHTML = html;
+}
+
+function addMirror(){
+  const s = streamByUid(mirrorsUid); if(!s) return;
+  const inp = document.getElementById('mirInput');
+  const m = parseStream(inp.value);
+  if(!m) return;                      // parseStream already toasted why
+  if(s.mirrors.some(x=>x.type===m.type && x.id===m.id)){ toast(t('toastMirDup')); return; }
+  s.mirrors.push({type:m.type, id:m.id, label:m.label});
+  inp.value = '';
+  renderMirrorList();
+  refreshDirectoryIfOpen();
+  toast(t('toastMirAdded'));
+}
+document.getElementById('mirInput').addEventListener('keydown', e=>{if(e.key==='Enter')addMirror();});
+
+/* rebuild ONLY this tile in place; every other tile keeps running */
+function switchTileToSource(uid, src){
+  const s = streamByUid(uid); if(!s) return;
+  ensureMirrors(s);
+  if(!s.mirrors.some(m=>m.type===src.type && m.id===src.id)) s.mirrors.push({...src});
+  s.type = src.type; s.id = src.id; s.label = src.label || s.label;
+  destroyTileResources(s.uid);
+  const el = tileEl(s.uid);
+  if(el){
+    el.replaceWith(buildTileEl(s, streams.indexOf(s)+1));
+    initTilePlayer(s);
+  }
+  syncChrome();
+  refreshDirectoryIfOpen();
+  if(mirrorsUid === uid) refreshMirrorModal();
+}
+function switchMirror(mi){
+  const s = streamByUid(mirrorsUid); if(!s || !s.mirrors[mi]) return;
+  switchTileToSource(s.uid, s.mirrors[mi]);
+  document.getElementById('mirName').value = isAutoLabel(s) ? '' : s.label;
+  toast(t('toastMirSwitched', {n:mi+1, label:s.label}));
+}
+
+function removeMirror(mi){
+  const s = streamByUid(mirrorsUid); if(!s || !s.mirrors[mi]) return;
+  if(mirrorIsActive(s, s.mirrors[mi])){ toast(t('toastMirActiveDel')); return; }
+  s.mirrors.splice(mi,1);
+  renderMirrorList();
+  refreshDirectoryIfOpen();
 }
 
 /* generic chooser */
@@ -1300,53 +1775,71 @@ function openChooser(msg, options){
 }
 function closeChooser(){document.getElementById('chVeil').classList.remove('open');}
 
-/* ---------- presets ---------- */
+/* Escape closes the topmost open modal */
+document.addEventListener('keydown', e=>{
+  if(e.key !== 'Escape') return;
+  if(document.getElementById('chVeil').classList.contains('open')) return closeChooser();
+  if(document.getElementById('mirVeil').classList.contains('open')) return closeMirrors();
+  if(document.getElementById('dirVeil').classList.contains('open')) return closeDirectory();
+});
+
+/* ---------- presets ----------
+   Every entry is a real, nameable source. Where a preset needs a slot the app
+   can't honestly fill (no free embeddable rights-holder feed exists for league
+   sport), the tile is labelled a placeholder rather than given a borrowed name. */
 const presets = {
-  esports:[
-    {type:'youtube', id:'jfKfPfyJRdk', label:'LEC – League of Legends Championship'},
-    {type:'twitch', id:'esl_csgo', label:'ESL Counter-Strike Main'},
-    {type:'youtube', id:'RxAg2l8LQFQ', label:'Valorant Champions'},
-  ],
-  sports:[
-    {type:'youtube', id:'dQw4w9WgXcQ', label:'Sky Sports Premier League'},
-    {type:'youtube', id:'jfKfPfyJRdk', label:'ESPN Match Coverage'},
-    {type:'twitch', id:'nbatv', label:'NBA TV'},
-    {type:'youtube', id:'RxAg2l8LQFQ', label:'La Liga Official'},
-  ],
   news:[
-    {type:'youtube-channel', id:'UCNye-wNBqNL5ZzHSJj3l8Bg', label:'Al Jazeera English'},
+    {type:'youtube-channel', id:'UCNye-wNBqNL5ZzHSJj3l8Bg'},
     {type:'youtube-channel', id:'UCfiwzLy-8yKzIbsmZTzxDgw', label:'Al Jazeera Arabic'},
-    {type:'youtube-channel', id:'UCoMdktPbSTixAyNGwb-UYkQ', label:'Sky News'},
-    {type:'youtube-channel', id:'UCknLrEdhRCp1aegoMqRaCZg', label:'DW News'},
-    {type:'youtube-channel', id:'UCQfwfsi5VrQ8yKZ-UWmAEFg', label:'France 24 English'},
-    {type:'youtube-channel', id:'UCBi2mrWuNuyYy4gbM6fU18Q', label:'ABC News'},
-    {type:'youtube-channel', id:'UCIALMKvObZNtJ6AmdCLP7Lg', label:'Bloomberg Television'},
+    {type:'youtube-channel', id:'UCoMdktPbSTixAyNGwb-UYkQ'},
+    {type:'youtube-channel', id:'UCknLrEdhRCp1aegoMqRaCZg'},
+    {type:'youtube-channel', id:'UCQfwfsi5VrQ8yKZ-UWmAEFg'},
+    {type:'youtube-channel', id:'UCBi2mrWuNuyYy4gbM6fU18Q'},
+    {type:'youtube-channel', id:'UCnyCrv8b7bu0oWFXGyHaPzg'},
+  ],
+  business:[
+    {type:'youtube-channel', id:'UCIALMKvObZNtJ6AmdCLP7Lg'},
+    {type:'youtube-channel', id:'UCvJJ_dzjViJCoLf5uKUTwoA'},
+    {type:'youtube-channel', id:'UCEAZeUIeJs0IjQiqTCdVSIg'},
+    {type:'youtube-channel', id:'UCb--64Gl51jIEVE-GLDAVTg'},
+  ],
+  esports:[
+    {type:'twitch', id:'riotgames', label:'Riot Games (Twitch)'},
+    {type:'twitch', id:'esl_csgo', label:'ESL Counter-Strike (Twitch)'},
+    {type:'twitch', id:'valorant', label:'VALORANT (Twitch)'},
   ],
   creators:[
-    {type:'twitch', id:'auronplay', label:'Auronplay'},
-    {type:'twitch', id:'ibai', label:'Ibai'},
-    {type:'twitch', id:'pokimane', label:'Pokimane'},
-    {type:'youtube', id:'jfKfPfyJRdk', label:'Ludwig YouTube'},
+    {type:'twitch', id:'auronplay', label:'Auronplay (Twitch)'},
+    {type:'twitch', id:'ibai', label:'Ibai (Twitch)'},
+    {type:'twitch', id:'pokimane', label:'Pokimane (Twitch)'},
   ],
-  f1:[
-    {type:'youtube', id:'dQw4w9WgXcQ', label:'Formula 1 Official'},
-    {type:'youtube', id:'jfKfPfyJRdk', label:'F1TV Pit Lane'},
-    {type:'youtube', id:'RxAg2l8LQFQ', label:'Sky Sports F1'},
-    {type:'youtube', id:'9bZkp7q19f0', label:'Team Radio'},
+  sports:[
+    {type:'youtube', id:'jfKfPfyJRdk', demo:true},
+    {type:'youtube-channel', id:'UCLA_DiR1FfKNvjuUpBHmylQ', demo:true},
+    {type:'youtube', id:'jfKfPfyJRdk', demo:true},
+    {type:'youtube-channel', id:'UCLA_DiR1FfKNvjuUpBHmylQ', demo:true},
   ],
-  nba:[
-    {type:'twitch', id:'nba', label:'NBA Official'},
-    {type:'youtube', id:'dQw4w9WgXcQ', label:'ESPN NBA'},
-    {type:'youtube', id:'jfKfPfyJRdk', label:'NBA TV'},
-    {type:'twitch', id:'nbatv', label:'NBA League Pass'},
+  space:[
+    {type:'youtube-channel', id:'UCLA_DiR1FfKNvjuUpBHmylQ'},
+    {type:'youtube-channel', id:'UC1FbPiXx59_ltnFVx7IxWow'},
+    {type:'youtube-channel', id:'UCiOmTCan1HRYtZ_wWu15KJQ'},
   ],
 };
-const PRESET_TITLE_KEY = {esports:'pEsportsT', sports:'pSportsT', news:'pNewsT', creators:'pCreatorsT', f1:'pF1T', nba:'pNbaT'};
+const PRESET_TITLE_KEY = {news:'pNewsT', business:'pBusinessT', esports:'pEsportsT', creators:'pCreatorsT', sports:'pSportsT', space:'pSpaceT'};
 
 function loadPreset(name){
   const preset = presets[name];
   if(!preset) return;
-  streams = preset.slice(0, MAX_STREAMS);
+  // clone entries so preset constants never get uid-stamped or mutated, and
+  // pull directory metadata (localized name + known mirrors) where we have it
+  streams = preset.slice(0, MAX_STREAMS).map((e,i)=>{
+    const c = e.type==='youtube-channel' ? dirByChannelId(e.id) : null;
+    const base = c ? mkDirStream(c) : {type:e.type, id:e.id, label:e.label || defaultLabelFor(e.type, e.id)};
+    if(e.demo) base.label = t('demoSlot') + ' ' + (i+1);
+    else if(e.label && !c) base.label = e.label;
+    else if(e.label && c) base.label = LANG==='ar' ? base.label : e.label;
+    return base;
+  });
   showApp();
   render();
   toast(t('toastPreset', {name:t(PRESET_TITLE_KEY[name] || name)}));
@@ -1360,12 +1853,23 @@ function loadPreset(name){
   try{ saved = localStorage.getItem('sw_lang'); }catch(e){}
   LANG = (pl==='ar' || pl==='en') ? pl : (saved==='ar' ? 'ar' : 'en');
   applyLangStatic();
-  const g = params.get('g');
-  if(g){
-    streams = decodeStreams(g);
-    if(streams.length){ showApp(); render(); }
-  } else if(LANG !== 'en'){
-    render(); // repaint empty state in the right language
+
+  // read g RAW — URLSearchParams would pre-decode and corrupt %-bearing ids/labels
+  const gm = location.search.match(/[?&]g=([^&#]*)/);
+  if(gm && gm[1]){
+    streams = decodeStreams(gm[1]);
+    if(streams.length){ showApp(); }
+  }
+  render();   // paints tiles, or the empty state in the right language
+
+  // YouTube refuses embeds without a Referer header (Error 153). A page opened
+  // from disk (file://) can never send one — warn instead of failing silently.
+  if(location.protocol === 'file:'){
+    const bar = document.createElement('div');
+    bar.id = 'file-banner';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:200;background:#5c1a1a;color:#ffd9d9;font:13px/1.5 "IBM Plex Mono",monospace;padding:10px 16px;text-align:center';
+    bar.innerHTML = t('fileBanner');
+    document.body.appendChild(bar);
   }
 })();
 </script>
